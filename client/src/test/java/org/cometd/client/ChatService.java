@@ -1,17 +1,17 @@
 package org.cometd.client;
 
+import org.cometd.Bayeux;
+import org.cometd.Channel;
+import org.cometd.Client;
+import org.cometd.RemoveListener;
+import org.cometd.server.BayeuxService;
+
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-
-import org.cometd.Bayeux;
-import org.cometd.Channel;
-import org.cometd.Client;
-import org.cometd.RemoveListener;
-import org.cometd.server.BayeuxService;
 
 public class ChatService extends BayeuxService
 {

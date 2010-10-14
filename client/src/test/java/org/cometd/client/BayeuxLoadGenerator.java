@@ -1,5 +1,13 @@
 package org.cometd.client;
 
+import com.ning.http.client.AsyncHttpClient;
+import com.ning.http.client.AsyncHttpClientConfig;
+import org.cometd.Bayeux;
+import org.cometd.Client;
+import org.cometd.Message;
+import org.cometd.MessageListener;
+import org.eclipse.jetty.util.ajax.JSON;
+
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.util.ArrayList;
@@ -15,14 +23,6 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
-import org.cometd.Bayeux;
-import org.cometd.Client;
-import org.cometd.Message;
-import org.cometd.MessageListener;
-import org.eclipse.jetty.client.HttpClient;
-import org.eclipse.jetty.util.ajax.JSON;
-import org.eclipse.jetty.util.thread.QueuedThreadPool;
-
 public class BayeuxLoadGenerator
 {
     private final Random random = new Random();
@@ -37,24 +37,21 @@ public class BayeuxLoadGenerator
     private final AtomicLong maxWallLatency = new AtomicLong();
     private final AtomicLong totWallLatency = new AtomicLong();
     private final ConcurrentMap<Long, AtomicLong> wallLatencies = new ConcurrentHashMap<Long, AtomicLong>();
-    private final HttpClient httpClient;
+    private final AsyncHttpClient httpClient;
 
     public static void main(String[] args) throws Exception
     {
-        HttpClient httpClient = new HttpClient();
-        httpClient.setMaxConnectionsPerAddress(40000);
-        QueuedThreadPool threadPool = new QueuedThreadPool();
-        threadPool.setMaxThreads(500);
-        threadPool.setDaemon(true);
-        httpClient.setThreadPool(threadPool);
-        httpClient.setIdleTimeout(5000);
-        httpClient.start();
+        AsyncHttpClientConfig.Builder config = new AsyncHttpClientConfig.Builder();
+
+        config.setMaximumConnectionsPerHost(40000);
+        config.setIdleConnectionTimeoutInMs(5000);
+        AsyncHttpClient httpClient = new AsyncHttpClient(config.build());
 
         BayeuxLoadGenerator generator = new BayeuxLoadGenerator(httpClient);
         generator.generateLoad();
     }
 
-    public BayeuxLoadGenerator(HttpClient httpClient)
+    public BayeuxLoadGenerator(AsyncHttpClient httpClient)
     {
         this.httpClient = httpClient;
     }
@@ -318,7 +315,7 @@ public class BayeuxLoadGenerator
         // Wait for the disconnect to complete
         Thread.sleep(1000);
 
-        httpClient.stop();
+        httpClient.close();
     }
 
     private void updateLatencies(long startTime, long endTime)
@@ -527,7 +524,7 @@ public class BayeuxLoadGenerator
         private final int roomsPerClient;
         private final MessageListener listener;
 
-        private LoadBayeuxClient(String url, HttpClient client, String channel, int rooms, int roomsPerClient, MessageListener listener)
+        private LoadBayeuxClient(String url, AsyncHttpClient client, String channel, int rooms, int roomsPerClient, MessageListener listener)
         {
             super(client, url);
             this.channel = channel;

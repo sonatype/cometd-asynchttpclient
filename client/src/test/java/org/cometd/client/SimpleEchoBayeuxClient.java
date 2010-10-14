@@ -1,18 +1,18 @@
 package org.cometd.client;
 
-import java.io.InputStreamReader;
-import java.io.LineNumberReader;
-import java.util.Map;
-import java.util.Timer;
-
+import com.ning.http.client.AsyncHttpClient;
+import com.ning.http.client.AsyncHttpClientConfig;
 import org.cometd.Client;
 import org.cometd.Message;
 import org.cometd.MessageListener;
 import org.cometd.server.AbstractBayeux;
 import org.eclipse.jetty.client.Address;
-import org.eclipse.jetty.client.HttpClient;
 import org.eclipse.jetty.util.ajax.JSON;
-import org.eclipse.jetty.util.thread.QueuedThreadPool;
+
+import java.io.InputStreamReader;
+import java.io.LineNumberReader;
+import java.util.Map;
+import java.util.Timer;
 
 /**
  * SimpleEchoBayeuxClient
@@ -28,7 +28,7 @@ public class SimpleEchoBayeuxClient
     String _who;
     BayeuxClient _client;
     Timer _timer;
-    HttpClient _httpClient;
+    AsyncHttpClient _httpClient;
     boolean _connected;
     
     public SimpleEchoBayeuxClient(String host, int port, String uri, String who)
@@ -37,18 +37,12 @@ public class SimpleEchoBayeuxClient
         _who = who;
         if (_who == null)
             _who = "anonymous";
-        _timer = new Timer("SharedBayeuxClientTimer", true); 
-        _httpClient = new HttpClient();
- 
-        _httpClient.setConnectorType(HttpClient.CONNECTOR_SELECT_CHANNEL);
-        _httpClient.setMaxConnectionsPerAddress(40000);
+        _timer = new Timer("SharedBayeuxClientTimer", true);
 
-        QueuedThreadPool pool = new QueuedThreadPool();
-        pool.setMaxThreads(500);
-        pool.setMinThreads(200);
-        pool.setDaemon(true);
-        _httpClient.setThreadPool(pool);
-        _httpClient.start();
+        AsyncHttpClientConfig.Builder config = new AsyncHttpClientConfig.Builder();
+
+        config.setMaximumConnectionsPerHost(40000);
+        _httpClient = new AsyncHttpClient(config.build());
 
         Address address = new Address (host,port);
         
@@ -146,7 +140,7 @@ public class SimpleEchoBayeuxClient
         try
         {
             System.err.println("Stopping HttpClient");
-            _httpClient.stop(); 
+            _httpClient.close();
             System.err.println("Stopped HttpClient");
         }
         catch (Exception e)
@@ -160,7 +154,7 @@ public class SimpleEchoBayeuxClient
         try
         {
             System.err.println("Starting HttpClient");
-            _httpClient.start();
+            _httpClient.close();
             System.err.println("Started HttpClient");
         }
         catch (Exception e)

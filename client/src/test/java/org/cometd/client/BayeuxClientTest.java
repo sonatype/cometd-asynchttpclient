@@ -1,23 +1,7 @@
 package org.cometd.client;
 
-import java.io.IOException;
-import java.util.HashMap;
-import java.util.Random;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.Exchanger;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicReference;
-import javax.servlet.Filter;
-import javax.servlet.FilterChain;
-import javax.servlet.FilterConfig;
-import javax.servlet.ServletException;
-import javax.servlet.ServletRequest;
-import javax.servlet.ServletResponse;
-import javax.servlet.http.Cookie;
-import javax.servlet.http.HttpServletResponse;
-
+import com.ning.http.client.AsyncHttpClient;
+import com.ning.http.client.AsyncHttpClientConfig;
 import junit.framework.TestCase;
 import org.cometd.Bayeux;
 import org.cometd.Client;
@@ -25,8 +9,6 @@ import org.cometd.Message;
 import org.cometd.MessageListener;
 import org.cometd.server.MessageImpl;
 import org.cometd.server.continuation.ContinuationCometdServlet;
-import org.eclipse.jetty.client.HttpClient;
-import org.eclipse.jetty.client.HttpExchange;
 import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.server.nio.SelectChannelConnector;
 import org.eclipse.jetty.servlet.DefaultServlet;
@@ -37,12 +19,30 @@ import org.eclipse.jetty.util.BlockingArrayQueue;
 import org.eclipse.jetty.util.component.LifeCycle;
 import org.eclipse.jetty.util.resource.Resource;
 
+import javax.servlet.Filter;
+import javax.servlet.FilterChain;
+import javax.servlet.FilterConfig;
+import javax.servlet.ServletException;
+import javax.servlet.ServletRequest;
+import javax.servlet.ServletResponse;
+import javax.servlet.http.Cookie;
+import javax.servlet.http.HttpServletResponse;
+import java.io.IOException;
+import java.util.HashMap;
+import java.util.Random;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Exchanger;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
+
 public class BayeuxClientTest extends TestCase
 {
     private boolean _stress=Boolean.getBoolean("STRESS");
     private Server _server;
     private SelectChannelConnector _connector;
-    private HttpClient _httpClient;
+    private AsyncHttpClient _httpClient;
     private TestFilter _filter;
     private int _port;
 
@@ -77,11 +77,12 @@ public class BayeuxClientTest extends TestCase
         context.addServlet(DefaultServlet.class, "/");
 
         _server.start();
+        AsyncHttpClientConfig.Builder config = new AsyncHttpClientConfig.Builder();
 
-        _httpClient = new HttpClient();
-        _httpClient.setMaxConnectionsPerAddress(20000);
-        _httpClient.setIdleTimeout(15000);
-        _httpClient.start();
+        config.setMaximumConnectionsPerHost(20000);
+        config.setIdleConnectionTimeoutInMs(15000);
+        _httpClient = new AsyncHttpClient(config.build());
+
 
         _port=_connector.getLocalPort();
     }
@@ -94,7 +95,7 @@ public class BayeuxClientTest extends TestCase
     protected void tearDown() throws Exception
     {
         if (_httpClient!=null)
-            _httpClient.stop();
+            _httpClient.close();
         _httpClient=null;
 
         if (_server!=null)
@@ -394,7 +395,7 @@ public class BayeuxClientTest extends TestCase
             }
 
             @Override
-            protected void send(HttpExchange exchange) throws IOException
+            protected void send(Exchange exchange) throws IOException
             {
                 if (exchange instanceof Publish)
                     publishLatch.get().countDown();
@@ -443,7 +444,7 @@ public class BayeuxClientTest extends TestCase
             }
 
             @Override
-            protected void send(HttpExchange exchange) throws IOException
+            protected void send(Exchange exchange) throws IOException
             {
                 if (exchange instanceof Publish && abort.get())
                 {
@@ -620,7 +621,7 @@ public class BayeuxClientTest extends TestCase
             try
             {
                 if (_server!=null) _server.dump();
-                if (_httpClient!=null) _httpClient.dump();
+                //if (_httpClient!=null) _httpClient.dump();
             }
             catch (Exception x)
             {

@@ -1,11 +1,7 @@
 package org.cometd.client;
 
-import java.util.HashMap;
-import java.util.Map;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicReference;
-
+import com.ning.http.client.AsyncHttpClient;
+import com.ning.http.client.AsyncHttpClientConfig;
 import junit.framework.TestCase;
 import org.cometd.Bayeux;
 import org.cometd.Client;
@@ -14,26 +10,29 @@ import org.cometd.Message;
 import org.cometd.MessageListener;
 import org.cometd.server.AbstractBayeux;
 import org.cometd.server.continuation.ContinuationCometdServlet;
-import org.eclipse.jetty.client.HttpClient;
 import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.server.handler.HandlerCollection;
 import org.eclipse.jetty.server.nio.SelectChannelConnector;
 import org.eclipse.jetty.servlet.ServletContextHandler;
 import org.eclipse.jetty.servlet.ServletHolder;
 
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
+
 /**
  * @version $Revision: 1047 $ $Date: 2010-03-26 08:32:51 -0400 (Fri, 26 Mar 2010) $
  */
-public class MessageDeepCopyTest extends TestCase
-{
+public class MessageDeepCopyTest extends TestCase {
     private Server server;
     private String cometdURL;
-    private HttpClient httpClient;
+    private AsyncHttpClient httpClient;
     private AbstractBayeux bayeux;
 
     @Override
-    protected void setUp() throws Exception
-    {
+    protected void setUp() throws Exception {
         server = new Server();
         SelectChannelConnector connector = new SelectChannelConnector();
         server.addConnector(connector);
@@ -60,23 +59,20 @@ public class MessageDeepCopyTest extends TestCase
 
         String contextURL = "http://localhost:" + connector.getLocalPort() + contextPath;
         cometdURL = contextURL + cometServletPath;
+        AsyncHttpClientConfig.Builder config = new AsyncHttpClientConfig.Builder();
 
-        httpClient = new HttpClient();
-        httpClient.setConnectorType(HttpClient.CONNECTOR_SELECT_CHANNEL);
-        httpClient.setIdleTimeout(10000);
-        httpClient.start();
+        config.setIdleConnectionTimeoutInMs(10000);
+        httpClient = new AsyncHttpClient(config.build());
     }
 
     @Override
-    protected void tearDown() throws Exception
-    {
-        httpClient.stop();
+    protected void tearDown() throws Exception {
+        httpClient.close();
         server.stop();
         server.join();
     }
 
-    public void testMessageDeepCopy() throws Exception
-    {
+    public void testMessageDeepCopy() throws Exception {
         final String channel = "/test";
 
         final CountDownLatch readyLatch = new CountDownLatch(2);
@@ -87,16 +83,11 @@ public class MessageDeepCopyTest extends TestCase
         BayeuxClient adminClient = new BayeuxClient(httpClient, cometdURL);
         adminClient.addExtension(new AdminExtension());
         adminClient.start();
-        adminClient.addListener(new MessageListener()
-        {
-            public void deliver(Client from, Client to, Message message)
-            {
-                if (Bayeux.META_SUBSCRIBE.equals(message.getChannel()))
-                {
+        adminClient.addListener(new MessageListener() {
+            public void deliver(Client from, Client to, Message message) {
+                if (Bayeux.META_SUBSCRIBE.equals(message.getChannel())) {
                     readyLatch.countDown();
-                }
-                else if (channel.equals(message.getChannel()) && message.getData() != null)
-                {
+                } else if (channel.equals(message.getChannel()) && message.getData() != null) {
                     // Deep copy the message otherwise it is recycled and the test fails
                     adminMessage.set(deepCopy(message));
                     messagesLatch.countDown();
@@ -107,16 +98,11 @@ public class MessageDeepCopyTest extends TestCase
 
         BayeuxClient standardClient = new BayeuxClient(httpClient, cometdURL);
         standardClient.start();
-        standardClient.addListener(new MessageListener()
-        {
-            public void deliver(Client from, Client to, Message message)
-            {
-                if (Bayeux.META_SUBSCRIBE.equals(message.getChannel()))
-                {
+        standardClient.addListener(new MessageListener() {
+            public void deliver(Client from, Client to, Message message) {
+                if (Bayeux.META_SUBSCRIBE.equals(message.getChannel())) {
                     readyLatch.countDown();
-                }
-                else if (channel.equals(message.getChannel()) && message.getData() != null)
-                {
+                } else if (channel.equals(message.getChannel()) && message.getData() != null) {
                     // Deep copy the message otherwise it is recycled and the test fails
                     standardMessage.set(deepCopy(message));
                     messagesLatch.countDown();
@@ -135,7 +121,7 @@ public class MessageDeepCopyTest extends TestCase
         assertNotNull(standardMessage.get());
         Message admin = adminMessage.get();
         assertNotNull(admin.getExt(false));
-        assertTrue((Boolean)admin.getExt(false).get("secret"));
+        assertTrue((Boolean) admin.getExt(false).get("secret"));
         Message standard = standardMessage.get();
         assertNull(standard.getExt(false));
 
@@ -143,36 +129,29 @@ public class MessageDeepCopyTest extends TestCase
         standardClient.stop();
     }
 
-    private Message deepCopy(Message message)
-    {
+    private Message deepCopy(Message message) {
         String json = bayeux.getMsgJSON().toJSON(message);
-        return (Message)bayeux.getMsgJSON().fromJSON(json);
+        return (Message) bayeux.getMsgJSON().fromJSON(json);
     }
 
     /**
      * Client-side extension that identify a client as having an admin role
      */
-    private static class AdminExtension implements Extension
-    {
-        public Message rcv(Client client, Message message)
-        {
+    private static class AdminExtension implements Extension {
+        public Message rcv(Client client, Message message) {
             return message;
         }
 
-        public Message rcvMeta(Client client, Message message)
-        {
+        public Message rcvMeta(Client client, Message message) {
             return message;
         }
 
-        public Message send(Client client, Message message)
-        {
+        public Message send(Client client, Message message) {
             return message;
         }
 
-        public Message sendMeta(Client client, Message message)
-        {
-            if (Bayeux.META_HANDSHAKE.equals(message.getChannel()))
-            {
+        public Message sendMeta(Client client, Message message) {
+            if (Bayeux.META_HANDSHAKE.equals(message.getChannel())) {
                 Map<String, Object> ext = message.getExt(true);
                 Map<String, Object> role = new HashMap<String, Object>();
                 ext.put("role", role);
@@ -186,40 +165,30 @@ public class MessageDeepCopyTest extends TestCase
     /**
      * Server-side extension, per-Bayeux, that attaches the per-Client extension to server-side Client objects
      */
-    private class BayeuxMessageDeepCopyExtension implements Extension
-    {
-        public Message rcv(Client client, Message message)
-        {
+    private class BayeuxMessageDeepCopyExtension implements Extension {
+        public Message rcv(Client client, Message message) {
             return message;
         }
 
-        public Message rcvMeta(Client client, Message message)
-        {
+        public Message rcvMeta(Client client, Message message) {
             return message;
         }
 
-        public Message send(Client client, Message message)
-        {
+        public Message send(Client client, Message message) {
             return message;
         }
 
-        public Message sendMeta(Client client, Message message)
-        {
-            if (Bayeux.META_HANDSHAKE.equals(message.getChannel()))
-            {
-                if (message.get(Bayeux.SUCCESSFUL_FIELD) == Boolean.TRUE)
-                {
+        public Message sendMeta(Client client, Message message) {
+            if (Bayeux.META_HANDSHAKE.equals(message.getChannel())) {
+                if (message.get(Bayeux.SUCCESSFUL_FIELD) == Boolean.TRUE) {
                     boolean admin = false;
 
                     Map<String, Object> ext = message.getAssociated().getExt(false);
-                    if (ext != null)
-                    {
-                        Map<String, Object> role = (Map<String, Object>)ext.get("role");
-                        if (role != null)
-                        {
-                            String name = (String)role.get("name");
-                            if ("admin".equals(name))
-                            {
+                    if (ext != null) {
+                        Map<String, Object> role = (Map<String, Object>) ext.get("role");
+                        if (role != null) {
+                            String name = (String) role.get("name");
+                            if ("admin".equals(name)) {
                                 admin = true;
                             }
                         }
@@ -236,29 +205,23 @@ public class MessageDeepCopyTest extends TestCase
      * Server-side extension, per-Client, that deep copies messages to return extra information
      * only if the client has an admin role
      */
-    private class ClientMessageDeepCopyExtension implements Extension
-    {
+    private class ClientMessageDeepCopyExtension implements Extension {
         private final boolean admin;
 
-        public ClientMessageDeepCopyExtension(boolean admin)
-        {
+        public ClientMessageDeepCopyExtension(boolean admin) {
             this.admin = admin;
         }
 
-        public Message rcv(Client client, Message message)
-        {
+        public Message rcv(Client client, Message message) {
             return message;
         }
 
-        public Message rcvMeta(Client client, Message message)
-        {
+        public Message rcvMeta(Client client, Message message) {
             return message;
         }
 
-        public Message send(Client client, Message message)
-        {
-            if (admin)
-            {
+        public Message send(Client client, Message message) {
+            if (admin) {
                 // Deep copy the message
                 Message newMessage = deepCopy(message);
                 Map<String, Object> ext = newMessage.getExt(true);
@@ -269,8 +232,7 @@ public class MessageDeepCopyTest extends TestCase
             return message;
         }
 
-        public Message sendMeta(Client client, Message message)
-        {
+        public Message sendMeta(Client client, Message message) {
             return message;
         }
     }

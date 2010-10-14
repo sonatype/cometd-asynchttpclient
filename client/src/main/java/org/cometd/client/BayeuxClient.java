@@ -18,7 +18,10 @@ import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.Date;
 import java.util.LinkedList;
 import java.util.List;
@@ -31,6 +34,16 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 import javax.servlet.http.Cookie;
 
+import com.ning.http.client.AsyncHandler;
+import com.ning.http.client.AsyncHttpClient;
+import com.ning.http.client.FluentCaseInsensitiveStringsMap;
+import com.ning.http.client.HttpResponseBodyPart;
+import com.ning.http.client.HttpResponseHeaders;
+import com.ning.http.client.HttpResponseStatus;
+import com.ning.http.client.RequestBuilder;
+import com.ning.http.client.Response;
+import com.ning.http.client.logging.LogManager;
+import com.ning.http.client.logging.LoggerProvider;
 import org.cometd.Bayeux;
 import org.cometd.Client;
 import org.cometd.ClientListener;
@@ -41,14 +54,11 @@ import org.cometd.server.MessageImpl;
 import org.cometd.server.MessagePool;
 import org.eclipse.jetty.client.Address;
 import org.eclipse.jetty.client.CachedExchange;
-import org.eclipse.jetty.client.HttpClient;
 import org.eclipse.jetty.client.HttpExchange;
 import org.eclipse.jetty.http.HttpHeaders;
 import org.eclipse.jetty.http.HttpSchemes;
 import org.eclipse.jetty.http.HttpURI;
 import org.eclipse.jetty.io.Buffer;
-import org.eclipse.jetty.io.BufferUtil;
-import org.eclipse.jetty.io.ByteArrayBuffer;
 import org.eclipse.jetty.util.ArrayQueue;
 import org.eclipse.jetty.util.LazyList;
 import org.eclipse.jetty.util.QuotedStringTokenizer;
@@ -66,7 +76,7 @@ import org.eclipse.jetty.util.log.Log;
  * The HttpClient attributes are used to share a Timer and MessagePool instance
  * between all Bayeux clients sharing the same HttpClient.
  *
- * @see http://cometd.org
+ * @see <href="http://cometd.org">comed.org</a>
  * @author gregw
  *
  */
@@ -78,7 +88,7 @@ public class BayeuxClient extends AbstractLifeCycle implements Client
 
     private final ArrayQueue<Message> _inQ = new ArrayQueue<Message>();  // queue of incoming messages
     private final ArrayQueue<Message> _outQ = new ArrayQueue<Message>(); // queue of outgoing messages
-    private final HttpClient _httpClient;
+    private final AsyncHttpClient asyncHttpClient;
     private final Buffer _scheme;
     private final Address _cometdAddress;
     private final String _path;
@@ -100,17 +110,87 @@ public class BayeuxClient extends AbstractLifeCycle implements Client
     private Extension[] _extensions;
     private JSON _jsonOut;
 
+
+    static {
+        final java.util.logging.Logger logger = java.util.logging.Logger.getLogger("REMOVEME");
+        LogManager.setProvider(new LoggerProvider() {
+
+            public com.ning.http.client.logging.Logger getLogger(final Class<?> clazz) {
+                return new com.ning.http.client.logging.Logger() {
+
+                    public boolean isDebugEnabled() {
+                        return true;
+                    }
+
+                    public void debug(final String msg, final Object... msgArgs) {
+                        System.out.println(msg);
+                    }
+
+                    public void debug(final Throwable t) {
+                        t.printStackTrace();
+                    }
+
+                    public void debug(final Throwable t, final String msg, final Object... msgArgs) {
+                        System.out.println(msg);
+                        t.printStackTrace();
+                    }
+
+                    public void info(final String msg, final Object... msgArgs) {
+                        System.out.println(msg);
+                    }
+
+                    public void info(final Throwable t) {
+                        t.printStackTrace();
+                    }
+
+                    public void info(final Throwable t, final String msg, final Object... msgArgs) {
+                        System.out.println(msg);
+                        t.printStackTrace();
+                    }
+
+                    public void warn(final String msg, final Object... msgArgs) {
+                        System.out.println(msg);
+                    }
+
+                    public void warn(final Throwable t) {
+                        t.printStackTrace();
+                    }
+
+                    public void warn(final Throwable t, final String msg, final Object... msgArgs) {
+                        System.out.println(msg);
+                        t.printStackTrace();
+                    }
+
+                    public void error(final String msg, final Object... msgArgs) {
+                        System.out.println(msg);
+
+                    }
+
+                    public void error(final Throwable t) {
+                        t.printStackTrace();
+                    }
+
+                    public void error(final Throwable t, final String msg, final Object... msgArgs) {
+                        System.out.println(msg);
+                        t.printStackTrace();
+                    }
+                };
+            }
+        });
+    }
+
+
     /* ------------------------------------------------------------ */
-    public BayeuxClient(HttpClient client, String url)
+    public BayeuxClient(AsyncHttpClient client, String url)
     {
         this(client,url,null);
     }
 
     /* ------------------------------------------------------------ */
-    public BayeuxClient(HttpClient client, String url, Timer timer)
+    public BayeuxClient(AsyncHttpClient client, String url, Timer timer)
     {
         HttpURI uri = new HttpURI(url);
-        _httpClient = client;
+        asyncHttpClient = client;
         _scheme = (HttpSchemes.HTTPS.equals(uri.getScheme()))?HttpSchemes.HTTPS_BUFFER:HttpSchemes.HTTP_BUFFER;
         _cometdAddress = new Address(uri.getHost(),uri.getPort());
         _path=uri.getPath();
@@ -118,9 +198,9 @@ public class BayeuxClient extends AbstractLifeCycle implements Client
     }
 
     /* ------------------------------------------------------------ */
-    public BayeuxClient(HttpClient client, Address address, String path, Timer timer)
+    public BayeuxClient(AsyncHttpClient client, Address address, String path, Timer timer)
     {
-        _httpClient = client;
+        asyncHttpClient = client;
         _scheme = HttpSchemes.HTTP_BUFFER;
         _cometdAddress = address;
         _path = path;
@@ -128,7 +208,7 @@ public class BayeuxClient extends AbstractLifeCycle implements Client
     }
 
     /* ------------------------------------------------------------ */
-    public BayeuxClient(HttpClient client, Address address, String uri)
+    public BayeuxClient(AsyncHttpClient client, Address address, String uri)
     {
         this(client,address,uri,null);
     }
@@ -239,39 +319,24 @@ public class BayeuxClient extends AbstractLifeCycle implements Client
     /* ------------------------------------------------------------ */
     protected void doStart() throws Exception
     {
-        if (!_httpClient.isStarted())
-            throw new IllegalStateException("!HttpClient.isStarted()");
 
-        synchronized (_httpClient)
+        synchronized (asyncHttpClient)
         {
+
             if (_jsonOut == null)
             {
-                _jsonOut = (JSON)_httpClient.getAttribute(__JSON);
-                if (_jsonOut==null)
-                {
-                    _jsonOut = new JSON();
-                    _httpClient.setAttribute(__JSON,_jsonOut);
-                }
+                _jsonOut = new JSON();
             }
 
             if (_timer == null)
             {
-                _timer = (Timer)_httpClient.getAttribute(__TIMER);
-                if (_timer==null)
-                {
-                    _timer = new Timer(__TIMER+"@"+hashCode(),true);
-                    _httpClient.setAttribute(__TIMER,_timer);
-                }
+                _timer = _timer = new Timer(__TIMER+"@"+hashCode(),true);
+
             }
 
             if (_msgPool == null)
             {
-                _msgPool = (MessagePool)_httpClient.getAttribute(__MSGPOOL);
-                if (_msgPool==null)
-                {
-                    _msgPool = new MessagePool();
-                    _httpClient.setAttribute(__MSGPOOL,_msgPool);
-                }
+                _msgPool = new MessagePool();
             }
         }
         _disconnecting=false;
@@ -716,6 +781,159 @@ public class BayeuxClient extends AbstractLifeCycle implements Client
         return cookie == null ? null : cookie.cookie;
     }
 
+
+    class BayeuxAsyncCompletionHandler implements AsyncHandler{
+        private final Collection<HttpResponseBodyPart> bodies =
+            Collections.synchronizedCollection(new ArrayList<HttpResponseBodyPart>());
+        private HttpResponseStatus status;
+        private HttpResponseHeaders headers;
+
+        protected Utf8StringBuffer _responseContent;
+        protected int _bufferSize = 1024;
+        protected Message[] _responses;
+
+        public Utf8StringBuffer getResponseContent() {
+            return _responseContent;
+        }
+
+        public int getBufferSize() {
+            return _bufferSize;
+        }
+
+        public Message[] getResponses() {
+            return _responses;
+        }
+
+        public AsyncHandler.STATE onBodyPartReceived(final HttpResponseBodyPart content) throws Exception {
+            bodies.add(content);
+            if (_responseContent == null)
+                _responseContent = new Utf8StringBuffer(_bufferSize);
+
+            _responseContent.append(content.getBodyPartBytes(), 0, content.getBodyPartBytes().length);
+            return AsyncHandler.STATE.CONTINUE;
+        }
+
+        public final AsyncHandler.STATE onStatusReceived(final HttpResponseStatus status) throws Exception {
+            this.status = status;
+            return AsyncHandler.STATE.CONTINUE;
+        }
+
+
+        public final AsyncHandler.STATE onHeadersReceived(final HttpResponseHeaders headers) throws Exception {
+            this.headers = headers;
+
+
+            FluentCaseInsensitiveStringsMap h = headers.getHeaders();
+            for (String headerName : h.keySet()) {
+                if (headerName.equalsIgnoreCase(HttpHeaders.CONTENT_LENGTH))
+                {
+                    _bufferSize = Integer.valueOf(h.getFirstValue(headerName));
+                }
+                else if (headerName.equalsIgnoreCase(HttpHeaders.SET_COOKIE))
+                {
+                    String cname = null;
+                    String cvalue = null;
+
+                    QuotedStringTokenizer tok = new QuotedStringTokenizer(h.getFirstValue(headerName).toString(),"=;",false,false);
+                    tok.setSingle(false);
+
+                    if (tok.hasMoreElements())
+                        cname = tok.nextToken();
+                    if (tok.hasMoreElements())
+                        cvalue = tok.nextToken();
+
+                    Cookie cookie = new Cookie(cname,cvalue);
+
+                    while (tok.hasMoreTokens())
+                    {
+                        String token = tok.nextToken();
+                        if ("Version".equalsIgnoreCase(token))
+                            cookie.setVersion(Integer.parseInt(tok.nextToken()));
+                        else if ("Comment".equalsIgnoreCase(token))
+                            cookie.setComment(tok.nextToken());
+                        else if ("Path".equalsIgnoreCase(token))
+                            cookie.setPath(tok.nextToken());
+                        else if ("Domain".equalsIgnoreCase(token))
+                            cookie.setDomain(tok.nextToken());
+                        else if ("Expires".equalsIgnoreCase(token))
+                        {
+                            try
+                            {
+                                Date date = new SimpleDateFormat("EEE, dd-MMM-yy HH:mm:ss 'GMT'").parse(tok.nextToken());
+                                Long maxAge = TimeUnit.MILLISECONDS.toSeconds(date.getTime() - System.currentTimeMillis());
+                                cookie.setMaxAge(maxAge > 0 ? maxAge.intValue() : 0);
+                            }
+                            catch (ParseException ignored)
+                            {
+                            }
+                        }
+                        else if ("Max-Age".equalsIgnoreCase(token))
+                        {
+                            try
+                            {
+                                int maxAge = Integer.parseInt(tok.nextToken());
+                                cookie.setMaxAge(maxAge);
+                            }
+                            catch (NumberFormatException ignored)
+                            {
+                            }
+                        }
+                        else if ("Secure".equalsIgnoreCase(token))
+                            cookie.setSecure(true);
+                    }
+
+                    BayeuxClient.this.setCookie(cookie);
+                }
+            }
+
+            return AsyncHandler.STATE.CONTINUE;
+        }
+
+
+        public Response onCompleted() throws Exception {
+
+            Response response = status.provider().prepareResponse(status, headers, bodies);
+            if (status.getStatusCode() == 200)
+            {
+                String content = response.getResponseBody();
+                // TODO
+                if (content == null || content.length() == 0)
+                    throw new IllegalStateException("No content in response for "+ response.getUri());
+                _responses = _msgPool.parse(content);
+
+                if (_responses!=null)
+                    for (int i=0;i<_responses.length;i++)
+                        extendIn(_responses[i]);
+            }
+
+            return response;
+        }
+
+        public void onThrowable(Throwable t) {
+
+        }
+
+        public AsyncHandler.STATE onHeaderWriteCompleted() {
+            return AsyncHandler.STATE.CONTINUE;
+        }
+
+
+        public AsyncHandler.STATE onContentWriteCompleted() {
+            return AsyncHandler.STATE.CONTINUE;
+        }
+
+
+        public AsyncHandler.STATE onContentWriteProgess(long amount, long current, long total) {
+            return AsyncHandler.STATE.CONTINUE;
+        }
+
+        public void setResponses(Message[] _responses) {
+            this._responses = _responses;
+        }
+    }
+
+
+
     /* ------------------------------------------------------------ */
     /* ------------------------------------------------------------ */
     /* ------------------------------------------------------------ */
@@ -724,11 +942,11 @@ public class BayeuxClient extends AbstractLifeCycle implements Client
      */
     protected class Exchange extends CachedExchange
     {
-        Message[] _responses;
         int _backoff = _backoffInterval;
         String _json;
-        private int _bufferSize = 1024;
-        Utf8StringBuffer _responseContent;
+
+        protected final RequestBuilder requestBuilder;
+        protected BayeuxAsyncCompletionHandler asyncHandler;
 
         /* ------------------------------------------------------------ */
         Exchange(String info)
@@ -739,10 +957,15 @@ public class BayeuxClient extends AbstractLifeCycle implements Client
             setAddress(_cometdAddress);
             setURI(_path + "/" + info);
             setRequestContentType(Bayeux.JSON_CONTENT_TYPE);
+
+            requestBuilder = new RequestBuilder("POST").setUrl(getScheme() + "://" + getAddress() + getURI())
+                    .setHeader("Content-Type", Bayeux.JSON_CONTENT_TYPE);
+            asyncHandler = new BayeuxAsyncCompletionHandler();
         }
 
         public String getResponseContent() throws UnsupportedEncodingException
         {
+            Utf8StringBuffer _responseContent = asyncHandler.getResponseContent();
             if (_responseContent != null)
                 return _responseContent.toString();
             return null;
@@ -751,22 +974,13 @@ public class BayeuxClient extends AbstractLifeCycle implements Client
         @Override
         protected void onResponseStatus(Buffer version, int status, Buffer reason) throws IOException
         {
-            if (_responseContent!=null)
-                _responseContent.reset();
-            super.onResponseStatus(version,status,reason);
+            // NOT USED  -- See BayeuxAsyncCompletionHandler
         }
 
         @Override
         protected void onResponseContent(Buffer content) throws IOException
         {
-            super.onResponseContent(content);
-            if (_responseContent == null)
-                _responseContent = new Utf8StringBuffer(_bufferSize);
-
-            if (content.array()!=null)
-                _responseContent.append(content.array(),content.getIndex(),content.length());
-            else
-                _responseContent.append(content.asArray(),0,content.length());
+            // NOT USED  -- See BayeuxAsyncCompletionHandler
         }
 
         /* ------------------------------------------------------------ */
@@ -784,8 +998,7 @@ public class BayeuxClient extends AbstractLifeCycle implements Client
         /* ------------------------------------------------------------ */
         protected void setMessage(String message)
         {
-            message=extendOut(message);
-            setJson(message);
+            setJson(extendOut(message));
         }
 
         /* ------------------------------------------------------------ */
@@ -794,104 +1007,25 @@ public class BayeuxClient extends AbstractLifeCycle implements Client
             try
             {
                 _json = json;
-                setRequestContent(new ByteArrayBuffer(_json,"utf-8"));
+                requestBuilder.setBody(_json.getBytes("utf-8"));
             }
             catch (Exception e)
             {
                 Log.ignore(e);
-                setRequestContent(new ByteArrayBuffer(_json));
+                requestBuilder.setBody(_json);
             }
         }
 
         /* ------------------------------------------------------------ */
         protected void onResponseHeader(Buffer name, Buffer value) throws IOException
         {
-            super.onResponseHeader(name,value);
-            if (!isRunning())
-                return;
-
-            int header=HttpHeaders.CACHE.getOrdinal(name);
-            if (header== HttpHeaders.CONTENT_LENGTH_ORDINAL)
-            {
-                _bufferSize = BufferUtil.toInt(value);
-            }
-            else if (header == HttpHeaders.SET_COOKIE_ORDINAL)
-            {
-                String cname = null;
-                String cvalue = null;
-
-                QuotedStringTokenizer tok = new QuotedStringTokenizer(value.toString(),"=;",false,false);
-                tok.setSingle(false);
-
-                if (tok.hasMoreElements())
-                    cname = tok.nextToken();
-                if (tok.hasMoreElements())
-                    cvalue = tok.nextToken();
-
-                Cookie cookie = new Cookie(cname,cvalue);
-
-                while (tok.hasMoreTokens())
-                {
-                    String token = tok.nextToken();
-                    if ("Version".equalsIgnoreCase(token))
-                        cookie.setVersion(Integer.parseInt(tok.nextToken()));
-                    else if ("Comment".equalsIgnoreCase(token))
-                        cookie.setComment(tok.nextToken());
-                    else if ("Path".equalsIgnoreCase(token))
-                        cookie.setPath(tok.nextToken());
-                    else if ("Domain".equalsIgnoreCase(token))
-                        cookie.setDomain(tok.nextToken());
-                    else if ("Expires".equalsIgnoreCase(token))
-                    {
-                        try
-                        {
-                            Date date = new SimpleDateFormat("EEE, dd-MMM-yy HH:mm:ss 'GMT'").parse(tok.nextToken());
-                            Long maxAge = TimeUnit.MILLISECONDS.toSeconds(date.getTime() - System.currentTimeMillis());
-                            cookie.setMaxAge(maxAge > 0 ? maxAge.intValue() : 0);
-                        }
-                        catch (ParseException ignored)
-                        {
-                        }
-                    }
-                    else if ("Max-Age".equalsIgnoreCase(token))
-                    {
-                        try
-                        {
-                            int maxAge = Integer.parseInt(tok.nextToken());
-                            cookie.setMaxAge(maxAge);
-                        }
-                        catch (NumberFormatException ignored)
-                        {
-                        }
-                    }
-                    else if ("Secure".equalsIgnoreCase(token))
-                        cookie.setSecure(true);
-                }
-
-                BayeuxClient.this.setCookie(cookie);
-            }
+            // NOT USED  -- See BayeuxAsyncCompletionHandler
         }
 
         /* ------------------------------------------------------------ */
         protected void onResponseComplete() throws IOException
         {
-            if (!isRunning())
-                return;
-
-            super.onResponseComplete();
-
-            if (getResponseStatus() == 200)
-            {
-                String content = getResponseContent();
-                // TODO
-                if (content == null || content.length() == 0)
-                    throw new IllegalStateException("No content in response for "+getURI());
-                _responses = _msgPool.parse(content);
-
-                if (_responses!=null)
-                    for (int i=0;i<_responses.length;i++)
-                        extendIn(_responses[i]);
-            }
+            // NOT USED  -- See BayeuxAsyncCompletionHandler
         }
 
         /* ------------------------------------------------------------ */
@@ -919,12 +1053,22 @@ public class BayeuxClient extends AbstractLifeCycle implements Client
         /* ------------------------------------------------------------ */
         protected void recycle()
         {
+            Message[] _responses = asyncHandler.getResponses();
             if (_responses!=null)
                 for (Message msg:_responses)
                     if (msg instanceof MessageImpl)
                         ((MessageImpl)msg).decRef();
-            _responses=null;
+            asyncHandler.setResponses(null);
         }
+
+        public RequestBuilder getRequestBuilder() {
+            return requestBuilder;
+        }
+
+        public BayeuxAsyncCompletionHandler getAsyncHandler() {
+            return asyncHandler;
+        }
+
     }
 
     /* ------------------------------------------------------------ */
@@ -941,6 +1085,75 @@ public class BayeuxClient extends AbstractLifeCycle implements Client
         {
             super("handshake");
             setMessage(__HANDSHAKE);
+            asyncHandler = new BayeuxAsyncCompletionHandler() {
+
+                public final Response onCompleted() throws Exception {
+                    Response r = super.onCompleted();
+                    if (_disconnecting)
+                    {
+                        Message error=_msgPool.newMessage();
+                        error.put(Bayeux.SUCCESSFUL_FIELD,Boolean.FALSE);
+                        error.put("failure","expired");
+                        metaHandshake(false,false,error);
+                        try{stop();}catch(Exception e){Log.ignore(e);}
+                        return r;
+                    }
+
+                    if (r.getStatusCode() == 200 && _responses != null && _responses.length > 0)
+                    {
+                        MessageImpl response = (MessageImpl)_responses[0];
+                        boolean successful = response.isSuccessful();
+
+                        // Get advice if there is any
+                        Map adviceField = (Map)response.get(Bayeux.ADVICE_FIELD);
+                        if (adviceField != null)
+                            _advice = new Advice(adviceField);
+
+                        if (successful)
+                        {
+                            if (Log.isDebugEnabled())
+                                Log.debug("Successful handshake, sending connect");
+                            _clientId = (String)response.get(Bayeux.CLIENT_FIELD);
+
+                            metaHandshake(true, true,response);
+                            _pull = new Connect();
+                            send(_pull,false);
+                        }
+                        else
+                        {
+                            metaHandshake(false,false,response);
+                            if (_advice != null && _advice.isReconnectNone())
+                                throw new IOException("Handshake failed with advice reconnect=none :" + _responses[0]);
+                            else if (_advice != null && _advice.isReconnectHandshake())
+                            {
+                                _pull = new Handshake();
+                                if (!send(_pull,true))
+                                    throw new IOException("Handshake, retries exhausted");
+                            }
+                            else
+                            // assume retry = reconnect?
+                            {
+                                _pull = new Connect();
+                                if (!send(_pull,true))
+                                    throw new IOException("Connect after handshake, retries exhausted");
+                            }
+                        }
+                    }
+                    else
+                    {
+                        Message error=_msgPool.newMessage();
+                        error.put(Bayeux.SUCCESSFUL_FIELD,Boolean.FALSE);
+                        error.put("status",getResponseStatus());
+                        error.put("content",getResponseContent());
+
+                        metaHandshake(false,false,error);
+                        resend(true);
+                    }
+
+                    recycle();
+                    return r;
+                }
+            };
         }
 
         /* ------------------------------------------------------------ */
@@ -952,73 +1165,7 @@ public class BayeuxClient extends AbstractLifeCycle implements Client
          */
         protected void onResponseComplete() throws IOException
         {
-            super.onResponseComplete();
-
-            if (!isRunning())
-                return;
-
-            if (_disconnecting)
-            {
-                Message error=_msgPool.newMessage();
-                error.put(Bayeux.SUCCESSFUL_FIELD,Boolean.FALSE);
-                error.put("failure","expired");
-                metaHandshake(false,false,error);
-                try{stop();}catch(Exception e){Log.ignore(e);}
-                return;
-            }
-
-            if (getResponseStatus() == 200 && _responses != null && _responses.length > 0)
-            {
-                MessageImpl response = (MessageImpl)_responses[0];
-                boolean successful = response.isSuccessful();
-
-                // Get advice if there is any
-                Map adviceField = (Map)response.get(Bayeux.ADVICE_FIELD);
-                if (adviceField != null)
-                    _advice = new Advice(adviceField);
-
-                if (successful)
-                {
-                    if (Log.isDebugEnabled())
-                        Log.debug("Successful handshake, sending connect");
-                    _clientId = (String)response.get(Bayeux.CLIENT_FIELD);
-
-                    metaHandshake(true, true,response);
-                    _pull = new Connect();
-                    send(_pull,false);
-                }
-                else
-                {
-                    metaHandshake(false,false,response);
-                    if (_advice != null && _advice.isReconnectNone())
-                        throw new IOException("Handshake failed with advice reconnect=none :" + _responses[0]);
-                    else if (_advice != null && _advice.isReconnectHandshake())
-                    {
-                        _pull = new Handshake();
-                        if (!send(_pull,true))
-                            throw new IOException("Handshake, retries exhausted");
-                    }
-                    else
-                    // assume retry = reconnect?
-                    {
-                        _pull = new Connect();
-                        if (!send(_pull,true))
-                            throw new IOException("Connect after handshake, retries exhausted");
-                    }
-                }
-            }
-            else
-            {
-                Message error=_msgPool.newMessage();
-                error.put(Bayeux.SUCCESSFUL_FIELD,Boolean.FALSE);
-                error.put("status",getResponseStatus());
-                error.put("content",getResponseContent());
-
-                metaHandshake(false,false,error);
-                resend(true);
-            }
-
-            recycle();
+            // NOT USED  -- See BayeuxAsyncCompletionHandler
         }
 
         /* ------------------------------------------------------------ */
@@ -1075,122 +1222,129 @@ public class BayeuxClient extends AbstractLifeCycle implements Client
             super("connect");
             _connectString = "[{" + "\"channel\":\"/meta/connect\"," + "\"clientId\":\"" + _clientId + "\"," + "\"connectionType\":\"long-polling\"" + "}]";
             setMessage(_connectString);
-        }
 
-        protected void onResponseComplete() throws IOException
-        {
-            super.onResponseComplete();
-            if (!isRunning())
-                return;
+            asyncHandler = new BayeuxAsyncCompletionHandler() {
 
-            if (getResponseStatus() == 200 && _responses != null && _responses.length > 0)
-            {
-                try
-                {
-                    startBatch();
+                public final Response onCompleted() throws Exception {
+                    Response r = super.onCompleted();
 
-                    for (int i = 0; i < _responses.length; i++)
+                    if (r.getStatusCode() == 200 && _responses != null && _responses.length > 0)
                     {
-                        Message msg = _responses[i];
-
-                        // get advice if there is any
-                        Map adviceField = (Map)msg.get(Bayeux.ADVICE_FIELD);
-                        if (adviceField != null)
-                            _advice = new Advice(adviceField);
-
-                        if (Bayeux.META_CONNECT.equals(msg.get(Bayeux.CHANNEL_FIELD)))
+                        try
                         {
-                            Boolean successful = (Boolean)msg.get(Bayeux.SUCCESSFUL_FIELD);
-                            if (successful != null && successful)
+                            startBatch();
+
+                            for (int i = 0; i < _responses.length; i++)
                             {
-                                metaConnect(true,msg);
+                                Message msg = _responses[i];
 
-                                if (!isRunning())
-                                    break;
+                                // get advice if there is any
+                                Map adviceField = (Map)msg.get(Bayeux.ADVICE_FIELD);
+                                if (adviceField != null)
+                                    _advice = new Advice(adviceField);
 
-                                synchronized (_outQ)
+                                if (Bayeux.META_CONNECT.equals(msg.get(Bayeux.CHANNEL_FIELD)))
                                 {
-                                    if (_disconnecting)
-                                        continue;
-
-                                    if (!isInitialized())
+                                    Boolean successful = (Boolean)msg.get(Bayeux.SUCCESSFUL_FIELD);
+                                    if (successful != null && successful)
                                     {
-                                        setInitialized(true);
+                                        metaConnect(true,msg);
+
+                                        if (!isRunning())
+                                            break;
+
+                                        synchronized (_outQ)
                                         {
-                                            if (_outQ.size() > 0)
+                                            if (_disconnecting)
+                                                continue;
+
+                                            if (!isInitialized())
                                             {
-                                                _push = new Publish();
-                                                send(_push);
+                                                setInitialized(true);
+                                                {
+                                                    if (_outQ.size() > 0)
+                                                    {
+                                                        _push = new Publish();
+                                                        send(_push);
+                                                    }
+                                                }
                                             }
+
+                                        }
+                                        // send a Connect (ie longpoll) possibly with
+                                        // delay according to interval advice
+                                        _pull = new Connect();
+                                        send(_pull,false);
+                                    }
+                                    else
+                                    {
+                                        // received a failure to our connect message,
+                                        // check the advice to see what to do:
+                                        // reconnect: none = hard error
+                                        // reconnect: handshake = send a handshake
+                                        // message
+                                        // reconnect: retry = send another connect,
+                                        // possibly using interval
+
+                                        setInitialized(false);
+                                        metaConnect(false,msg);
+
+                                        synchronized(_outQ)
+                                        {
+                                            if (!isRunning()||_disconnecting)
+                                                break;
+                                        }
+
+                                        if (_advice != null && _advice.isReconnectNone())
+                                            throw new IOException("Connect failed, advice reconnect=none");
+                                        else if (_advice != null && _advice.isReconnectHandshake())
+                                        {
+                                            if (Log.isDebugEnabled())
+                                                Log.debug("connect received success=false, advice is to rehandshake");
+                                            _pull = new Handshake();
+                                            send(_pull,true);
+                                        }
+                                        else
+                                        {
+                                            // assume retry = reconnect
+                                            if (Log.isDebugEnabled())
+                                                Log.debug("Assuming retry=reconnect");
+                                            resend(true);
                                         }
                                     }
-
-                                }
-                                // send a Connect (ie longpoll) possibly with
-                                // delay according to interval advice
-                                _pull = new Connect();
-                                send(_pull,false);
-                            }
-                            else
-                            {
-                                // received a failure to our connect message,
-                                // check the advice to see what to do:
-                                // reconnect: none = hard error
-                                // reconnect: handshake = send a handshake
-                                // message
-                                // reconnect: retry = send another connect,
-                                // possibly using interval
-
-                                setInitialized(false);
-                                metaConnect(false,msg);
-
-                                synchronized(_outQ)
-                                {
-                                    if (!isRunning()||_disconnecting)
-                                        break;
                                 }
 
-                                if (_advice != null && _advice.isReconnectNone())
-                                    throw new IOException("Connect failed, advice reconnect=none");
-                                else if (_advice != null && _advice.isReconnectHandshake())
-                                {
-                                    if (Log.isDebugEnabled())
-                                        Log.debug("connect received success=false, advice is to rehandshake");
-                                    _pull = new Handshake();
-                                    send(_pull,true);
-                                }
-                                else
-                                {
-                                    // assume retry = reconnect
-                                    if (Log.isDebugEnabled())
-                                        Log.debug("Assuming retry=reconnect");
-                                    resend(true);
-                                }
+                                // It may happen that a message arrives just after a stop() or abort()
+                                // It is not fool proof, but reduces greatly the window of possibility
+                                if (isRunning())
+                                    deliver(null,msg);
                             }
                         }
-
-                        // It may happen that a message arrives just after a stop() or abort()
-                        // It is not fool proof, but reduces greatly the window of possibility
-                        if (isRunning())
-                            deliver(null,msg);
+                        finally
+                        {
+                            endBatch();
+                        }
                     }
-                }
-                finally
-                {
-                    endBatch();
-                }
-            }
-            else
-            {
-                Message error=_msgPool.newMessage();
-                error.put(Bayeux.SUCCESSFUL_FIELD,Boolean.FALSE);
-                error.put("status",getResponseStatus());
-                error.put("content",getResponseContent());
-                metaConnect(false,error);
-                resend(true);
-            }
+                    else
+                    {
+                        Message error=_msgPool.newMessage();
+                        error.put(Bayeux.SUCCESSFUL_FIELD,Boolean.FALSE);
+                        error.put("status",getResponseStatus());
+                        error.put("content",getResponseContent());
+                        metaConnect(false,error);
+                        resend(true);
+                    }
 
-            recycle();
+                    recycle();
+                    return r;
+                };
+            };
+        }
+
+        /* ------------------------------------------------------------ */
+        protected void onResponseComplete() throws IOException
+        {
+            // NOT USED  -- See BayeuxAsyncCompletionHandler
         }
 
         /* ------------------------------------------------------------ */
@@ -1266,6 +1420,50 @@ public class BayeuxClient extends AbstractLifeCycle implements Client
                 _outQ.clear();
                 setJson(json.toString());
             }
+            asyncHandler = new BayeuxAsyncCompletionHandler() {
+
+                public final Response onCompleted() throws Exception {
+                    Response r = super.onCompleted();
+
+
+                    try
+                    {
+                        synchronized (_outQ)
+                        {
+                            startBatch();
+                            _push = null;
+                        }
+
+                        if (r.getStatusCode() == 200 && _responses != null && _responses.length > 0)
+                        {
+                            for (int i = 0; i < _responses.length; i++)
+                            {
+                                MessageImpl msg = (MessageImpl)_responses[i];
+
+                                deliver(null,msg);
+                                if (Bayeux.META_DISCONNECT.equals(msg.getChannel())&&msg.isSuccessful())
+                                {
+                                    if (isStarted())
+                                    {
+                                        try{stop();}catch(Exception e){Log.ignore(e);}
+                                    }
+                                    break;
+                                }
+                            }
+                        }
+                        else
+                        {
+                            Log.warn("Publish, error=" + getResponseStatus());
+                        }
+                    }
+                    finally
+                    {
+                        endBatch();
+                    }
+                    recycle();
+                    return r;
+                }
+            };
         }
 
         protected Message[] getOutboundMessages()
@@ -1292,45 +1490,7 @@ public class BayeuxClient extends AbstractLifeCycle implements Client
          */
         protected void onResponseComplete() throws IOException
         {
-            if (!isRunning())
-                return;
-
-            super.onResponseComplete();
-            try
-            {
-                synchronized (_outQ)
-                {
-                    startBatch();
-                    _push = null;
-                }
-
-                if (getResponseStatus() == 200 && _responses != null && _responses.length > 0)
-                {
-                    for (int i = 0; i < _responses.length; i++)
-                    {
-                        MessageImpl msg = (MessageImpl)_responses[i];
-
-                        deliver(null,msg);
-                        if (Bayeux.META_DISCONNECT.equals(msg.getChannel())&&msg.isSuccessful())
-                        {
-                            if (isStarted())
-                            {
-                                try{stop();}catch(Exception e){Log.ignore(e);}
-                            }
-                            break;
-                        }
-                    }
-                }
-                else
-                {
-                    Log.warn("Publish, error=" + getResponseStatus());
-                }
-            }
-            finally
-            {
-                endBatch();
-            }
-            recycle();
+            // NOT USED  -- See BayeuxAsyncCompletionHandler
         }
 
         /* ------------------------------------------------------------ */
@@ -1492,7 +1652,7 @@ public class BayeuxClient extends AbstractLifeCycle implements Client
      * @param exchange The exchange to send
      * @throws IOException If the send fails
      */
-    protected void send(HttpExchange exchange) throws IOException
+    protected void send(Exchange exchange) throws IOException
     {
         exchange.reset(); // ensure at start state
         customize(exchange);
@@ -1500,7 +1660,8 @@ public class BayeuxClient extends AbstractLifeCycle implements Client
         {
             if (Log.isDebugEnabled())
                 Log.debug("Send: using any connection=" + exchange);
-            _httpClient.send(exchange); // use any connection
+            asyncHttpClient.executeRequest(exchange.getRequestBuilder().build(),
+                                           exchange.getAsyncHandler()); // use any connection
         }
     }
 
@@ -1680,4 +1841,6 @@ public class BayeuxClient extends AbstractLifeCycle implements Client
             return System.currentTimeMillis() >= expirationTime;
         }
     }
+
+    
 }

@@ -14,6 +14,17 @@
 
 package org.cometd.client;
 
+import com.ning.http.client.AsyncHttpClient;
+import com.ning.http.client.AsyncHttpClientConfig;
+import org.cometd.Client;
+import org.cometd.Extension;
+import org.cometd.Message;
+import org.cometd.MessageListener;
+import org.eclipse.jetty.client.Address;
+import org.eclipse.jetty.util.component.AbstractLifeCycle;
+import org.eclipse.jetty.util.log.Log;
+import org.eclipse.jetty.util.thread.QueuedThreadPool;
+
 import java.io.InputStreamReader;
 import java.io.LineNumberReader;
 import java.util.ArrayList;
@@ -21,20 +32,10 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import org.cometd.Client;
-import org.cometd.Extension;
-import org.cometd.Message;
-import org.cometd.MessageListener;
-import org.eclipse.jetty.client.Address;
-import org.eclipse.jetty.client.HttpClient;
-import org.eclipse.jetty.util.component.AbstractLifeCycle;
-import org.eclipse.jetty.util.log.Log;
-import org.eclipse.jetty.util.thread.QueuedThreadPool;
-
 public class ChatRoomClient extends AbstractLifeCycle
 {
     
-    private HttpClient _httpClient;
+    private AsyncHttpClient _httpClient;
     private BayeuxClient _bayeuxClient;
     private QueuedThreadPool _threadPool;
     
@@ -115,7 +116,7 @@ public class ChatRoomClient extends AbstractLifeCycle
         return _username;
     }
     
-    public HttpClient getHttpClient()
+    public AsyncHttpClient getHttpClient()
     {
         return _httpClient;
     }
@@ -139,7 +140,7 @@ public class ChatRoomClient extends AbstractLifeCycle
         Log.info("{} {}", getClass().getSimpleName(), "starting chat client.");
         
         if(_threadPool==null)
-        {
+    {
             _threadPool = new QueuedThreadPool();
             _threadPool.setMaxThreads(16);
             _threadPool.setDaemon(true);
@@ -150,12 +151,10 @@ public class ChatRoomClient extends AbstractLifeCycle
         
         if(_httpClient==null)
         {
-            _httpClient = new HttpClient();        
-            _httpClient.setConnectorType(HttpClient.CONNECTOR_SELECT_CHANNEL);        
-            _httpClient.setMaxConnectionsPerAddress(5);
-            _httpClient.setThreadPool(_threadPool);
-            _httpClient.start();
-        }        
+            AsyncHttpClientConfig.Builder config = new AsyncHttpClientConfig.Builder();
+            config.setMaximumConnectionsPerHost(5);
+            _httpClient = new AsyncHttpClient(config.build());
+        }
         
         
         Log.info("{} {}", getClass().getSimpleName(), "http client started.");
