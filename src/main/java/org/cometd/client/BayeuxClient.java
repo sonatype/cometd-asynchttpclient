@@ -22,6 +22,9 @@ import com.ning.http.client.HttpResponseHeaders;
 import com.ning.http.client.HttpResponseStatus;
 import com.ning.http.client.RequestBuilder;
 import com.ning.http.client.Response;
+import com.ning.http.client.logging.LogManager;
+import com.ning.http.client.logging.Logger;
+import com.ning.http.client.logging.LoggerProvider;
 import org.cometd.Bayeux;
 import org.cometd.Client;
 import org.cometd.ClientListener;
@@ -106,6 +109,88 @@ public class BayeuxClient extends AbstractLifeCycle implements Client {
     private int _backoffMaxInterval = 60000;
     private Extension[] _extensions;
     private JSON _jsonOut;
+
+    static {
+// Brige AsyncHttpClient logger
+        Log.getLog().setDebugEnabled(true);
+        LogManager.setProvider( new LoggerProvider()
+        {
+
+            public com.ning.http.client.logging.Logger getLogger( final Class<?> clazz )
+            {
+                return new com.ning.http.client.logging.Logger()
+                {
+
+                    public boolean isDebugEnabled()
+                    {
+                        return Log.isDebugEnabled();
+                    }
+
+                    public void debug( final String msg, final Object... msgArgs )
+                    {
+                        Log.debug( String.format( msg, msgArgs ) );
+                    }
+
+                    public void debug( final Throwable t )
+                    {
+                        Log.debug( "", t );
+                    }
+
+                    public void debug( final Throwable t, final String msg, final Object... msgArgs )
+                    {
+                        Log.debug( String.format( msg, msgArgs ), t );
+                    }
+
+                    public void info( final String msg, final Object... msgArgs )
+                    {
+                        Log.debug( String.format( msg, msgArgs ) );
+                    }
+
+                    public void info( final Throwable t )
+                    {
+                        Log.debug( "", t );
+                    }
+
+                    public void info( final Throwable t, final String msg, final Object... msgArgs )
+                    {
+                        Log.debug( String.format( msg, msgArgs ), t );
+                    }
+
+                    public void warn( final String msg, final Object... msgArgs )
+                    {
+                        Log.debug( String.format( msg, msgArgs ) );
+                    }
+
+                    public void warn( final Throwable t )
+                    {
+                        Log.debug( "", t );
+                    }
+
+                    public void warn( final Throwable t, final String msg, final Object... msgArgs )
+                    {
+                        Log.debug( String.format( msg, msgArgs ), t );
+                    }
+
+                    public void error( final String msg, final Object... msgArgs )
+                    {
+                        Log.debug( String.format( msg, msgArgs ) );
+
+                    }
+
+                    public void error( final Throwable t )
+                    {
+                        Log.debug( "", t );
+                    }
+
+                    public void error( final Throwable t, final String msg, final Object... msgArgs )
+                    {
+                        Log.debug( String.format( msg, msgArgs ), t );
+                    }
+                };
+            }
+        } );
+    }
+
 
     /* ------------------------------------------------------------ */
 
@@ -784,7 +869,6 @@ public class BayeuxClient extends AbstractLifeCycle implements Client {
         }
 
         public void onThrowable(Throwable t) {
-
         }
 
         public AsyncHandler.STATE onHeaderWriteCompleted() {
@@ -955,6 +1039,7 @@ public class BayeuxClient extends AbstractLifeCycle implements Client {
             setMessage(__HANDSHAKE);
             asyncHandler = new BayeuxAsyncCompletionHandler() {
 
+                @Override
                 public final Response onCompleted() throws Exception {
                     Response r = super.onCompleted();
                     if (_disconnecting) {
@@ -1016,7 +1101,14 @@ public class BayeuxClient extends AbstractLifeCycle implements Client {
                     recycle();
                     return r;
                 }
+
+                @Override
+                public void onThrowable(Throwable t) {
+                    onConnectionFailed(t);
+                }
             };
+
+
         }
 
         /* ------------------------------------------------------------ */
@@ -1034,7 +1126,7 @@ public class BayeuxClient extends AbstractLifeCycle implements Client {
         /* ------------------------------------------------------------ */
 
         protected void onExpire() {
-            // super.onExpire();
+            super.onExpire();
             Message error = _msgPool.newMessage();
             error.put(Bayeux.SUCCESSFUL_FIELD, Boolean.FALSE);
             error.put("failure", "expired");
@@ -1046,7 +1138,7 @@ public class BayeuxClient extends AbstractLifeCycle implements Client {
         /* ------------------------------------------------------------ */
 
         protected void onConnectionFailed(Throwable ex) {
-            // super.onConnectionFailed(ex);
+            super.onConnectionFailed(ex);
             Message error = _msgPool.newMessage();
             error.put(Bayeux.SUCCESSFUL_FIELD, Boolean.FALSE);
             error.put("failure", ex.toString());
@@ -1060,7 +1152,7 @@ public class BayeuxClient extends AbstractLifeCycle implements Client {
         /* ------------------------------------------------------------ */
 
         protected void onException(Throwable ex) {
-            // super.onException(ex);
+            super.onException(ex);
             Message error = _msgPool.newMessage();
             error.put(Bayeux.SUCCESSFUL_FIELD, Boolean.FALSE);
             error.put("failure", getURI());
@@ -1087,6 +1179,7 @@ public class BayeuxClient extends AbstractLifeCycle implements Client {
 
             asyncHandler = new BayeuxAsyncCompletionHandler() {
 
+                @Override                
                 public final Response onCompleted() throws Exception {
                     Response r = super.onCompleted();
 
@@ -1184,7 +1277,11 @@ public class BayeuxClient extends AbstractLifeCycle implements Client {
                     return r;
                 }
 
-                ;
+                @Override
+                public void onThrowable(Throwable t) {
+                    onConnectionFailed(t);
+                }
+
             };
         }
 
@@ -1197,7 +1294,7 @@ public class BayeuxClient extends AbstractLifeCycle implements Client {
         /* ------------------------------------------------------------ */
 
         protected void onExpire() {
-            // super.onExpire();
+            super.onExpire();
             setInitialized(false);
             Message error = _msgPool.newMessage();
             error.put(Bayeux.SUCCESSFUL_FIELD, Boolean.FALSE);
@@ -1209,7 +1306,7 @@ public class BayeuxClient extends AbstractLifeCycle implements Client {
         /* ------------------------------------------------------------ */
 
         protected void onConnectionFailed(Throwable ex) {
-            // super.onConnectionFailed(ex);
+            super.onConnectionFailed(ex);
             setInitialized(false);
             Message error = _msgPool.newMessage();
             error.put(Bayeux.SUCCESSFUL_FIELD, Boolean.FALSE);
@@ -1222,7 +1319,7 @@ public class BayeuxClient extends AbstractLifeCycle implements Client {
         /* ------------------------------------------------------------ */
 
         protected void onException(Throwable ex) {
-            // super.onException(ex);
+            super.onException(ex);
             setInitialized(false);
             Message error = _msgPool.newMessage();
             error.put(Bayeux.SUCCESSFUL_FIELD, Boolean.FALSE);
@@ -1269,7 +1366,6 @@ public class BayeuxClient extends AbstractLifeCycle implements Client {
                 public final Response onCompleted() throws Exception {
                     Response r = super.onCompleted();
 
-
                     try {
                         synchronized (_outQ) {
                             startBatch();
@@ -1301,6 +1397,11 @@ public class BayeuxClient extends AbstractLifeCycle implements Client {
                     }
                     recycle();
                     return r;
+                }
+
+                @Override
+                public void onThrowable(Throwable t) {
+                    onConnectionFailed(t);
                 }
             };
         }

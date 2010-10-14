@@ -2,6 +2,7 @@ package org.cometd.client;
 
 import com.ning.http.client.AsyncHttpClient;
 import com.ning.http.client.AsyncHttpClientConfig;
+import com.ning.http.client.filter.ThrottleRequestAsyncFilter;
 import org.cometd.Bayeux;
 import org.cometd.Client;
 import org.cometd.Message;
@@ -41,9 +42,9 @@ public class BayeuxLoadGenerator {
     public static void main(String[] args) throws Exception {
         AsyncHttpClientConfig.Builder config = new AsyncHttpClientConfig.Builder();
 
-        config.setMaximumConnectionsPerHost(40000);
         config.setIdleConnectionTimeoutInMs(5000);
         AsyncHttpClient httpClient = new AsyncHttpClient(config.build());
+        httpClient.addAsyncFilter(new ThrottleRequestAsyncFilter(40000));
 
         BayeuxLoadGenerator generator = new BayeuxLoadGenerator(httpClient);
         generator.generateLoad();

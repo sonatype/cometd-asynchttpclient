@@ -2,6 +2,7 @@ package org.cometd.client;
 
 import com.ning.http.client.AsyncHttpClient;
 import com.ning.http.client.AsyncHttpClientConfig;
+import com.ning.http.client.filter.ThrottleRequestAsyncFilter;
 import junit.framework.TestCase;
 import org.cometd.Bayeux;
 import org.cometd.Client;
@@ -77,10 +78,9 @@ public class BayeuxClientTest extends TestCase {
         _server.start();
         AsyncHttpClientConfig.Builder config = new AsyncHttpClientConfig.Builder();
 
-        config.setMaximumConnectionsPerHost(20000);
         config.setIdleConnectionTimeoutInMs(15000);
         _httpClient = new AsyncHttpClient(config.build());
-
+        _httpClient.addAsyncFilter(new ThrottleRequestAsyncFilter(20000));
 
         _port = _connector.getLocalPort();
     }
