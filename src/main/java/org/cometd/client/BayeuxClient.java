@@ -36,10 +36,12 @@ import org.cometd.server.MessagePool;
 import org.eclipse.jetty.client.Address;
 import org.eclipse.jetty.client.CachedExchange;
 import org.eclipse.jetty.client.HttpExchange;
+import org.eclipse.jetty.http.HttpFields;
 import org.eclipse.jetty.http.HttpHeaders;
 import org.eclipse.jetty.http.HttpSchemes;
 import org.eclipse.jetty.http.HttpURI;
 import org.eclipse.jetty.io.Buffer;
+import org.eclipse.jetty.io.ByteArrayBuffer;
 import org.eclipse.jetty.util.ArrayQueue;
 import org.eclipse.jetty.util.LazyList;
 import org.eclipse.jetty.util.QuotedStringTokenizer;
@@ -766,8 +768,8 @@ public class BayeuxClient extends AbstractLifeCycle implements Client {
         protected int _bufferSize = 1024;
         protected Message[] _responses;
 
-        public Utf8StringBuffer getResponseContent() {
-            return _responseContent;
+        public String getResponseContent() {
+            return _responseContent.toString();
         }
 
         public int getBufferSize() {
@@ -789,13 +791,12 @@ public class BayeuxClient extends AbstractLifeCycle implements Client {
 
         public final AsyncHandler.STATE onStatusReceived(final HttpResponseStatus status) throws Exception {
             this.status = status;
+            _responseContent = null;
             return AsyncHandler.STATE.CONTINUE;
         }
 
-
         public final AsyncHandler.STATE onHeadersReceived(final HttpResponseHeaders headers) throws Exception {
             this.headers = headers;
-
 
             FluentCaseInsensitiveStringsMap h = headers.getHeaders();
             for (String headerName : h.keySet()) {
@@ -855,9 +856,9 @@ public class BayeuxClient extends AbstractLifeCycle implements Client {
         public Response onCompleted() throws Exception {
 
             Response response = status.provider().prepareResponse(status, headers, bodies);
+            bodies.clear();
             if (status.getStatusCode() == 200) {
-                String content = response.getResponseBody();
-                // TODO
+                String content = getResponseContent();
                 if (content == null || content.length() == 0)
                     throw new IllegalStateException("No content in response for " + response.getUri());
                 _responses = _msgPool.parse(content);
@@ -871,6 +872,7 @@ public class BayeuxClient extends AbstractLifeCycle implements Client {
         }
 
         public void onThrowable(Throwable t) {
+            bodies.clear();
         }
 
         public AsyncHandler.STATE onHeaderWriteCompleted() {
@@ -889,6 +891,27 @@ public class BayeuxClient extends AbstractLifeCycle implements Client {
 
         public void setResponses(Message[] _responses) {
             this._responses = _responses;
+        }
+
+        public synchronized int getResponseStatus()
+        {
+            if (status == null)
+                throw new IllegalStateException("Response not received yet");
+            return status.getStatusCode();
+        }
+
+        public synchronized HttpFields getResponseFields()
+        {
+            if (status == null)
+                throw new IllegalStateException("Headers not completely received yet");
+
+
+            HttpFields f = new HttpFields();
+            FluentCaseInsensitiveStringsMap h = headers.getHeaders();
+            for (String headerName : h.keySet()) {
+                f.put(headerName, h.getFirstValue(headerName));
+            }        
+            return f;
         }
     }
 
@@ -920,13 +943,6 @@ public class BayeuxClient extends AbstractLifeCycle implements Client {
             requestBuilder = new RequestBuilder("POST").setUrl(getScheme() + "://" + getAddress() + getURI())
                     .setHeader("Content-Type", Bayeux.JSON_CONTENT_TYPE);
             asyncHandler = new BayeuxAsyncCompletionHandler();
-        }
-
-        public String getResponseContent() throws UnsupportedEncodingException {
-            Utf8StringBuffer _responseContent = asyncHandler.getResponseContent();
-            if (_responseContent != null)
-                return _responseContent.toString();
-            return null;
         }
 
         @Override
@@ -962,11 +978,9 @@ public class BayeuxClient extends AbstractLifeCycle implements Client {
         protected void setJson(String json) {
             try {
                 _json = json;
-                requestBuilder.setBody(_json.getBytes("utf-8"));
             }
             catch (Exception e) {
                 Log.ignore(e);
-                requestBuilder.setBody(_json);
             }
         }
 
@@ -1018,6 +1032,7 @@ public class BayeuxClient extends AbstractLifeCycle implements Client {
         }
 
         public RequestBuilder getRequestBuilder() {
+            requestBuilder.setBody(_json);
             return requestBuilder;
         }
 
@@ -1106,6 +1121,7 @@ public class BayeuxClient extends AbstractLifeCycle implements Client {
 
                 @Override
                 public void onThrowable(Throwable t) {
+                    super.onThrowable(t);
                     if (ConnectException.class.isAssignableFrom(t.getClass())) {
                         onConnectionFailed(t);
                     } else if (TimeoutException.class.isAssignableFrom(t.getClass())) {
@@ -1132,7 +1148,6 @@ public class BayeuxClient extends AbstractLifeCycle implements Client {
         /* ------------------------------------------------------------ */
 
         protected void onExpire() {
-            super.onExpire();
             Message error = _msgPool.newMessage();
             error.put(Bayeux.SUCCESSFUL_FIELD, Boolean.FALSE);
             error.put("failure", "expired");
@@ -1144,7 +1159,6 @@ public class BayeuxClient extends AbstractLifeCycle implements Client {
         /* ------------------------------------------------------------ */
 
         protected void onConnectionFailed(Throwable ex) {
-            super.onConnectionFailed(ex);
             Message error = _msgPool.newMessage();
             error.put(Bayeux.SUCCESSFUL_FIELD, Boolean.FALSE);
             error.put("failure", ex.toString());
@@ -1158,7 +1172,6 @@ public class BayeuxClient extends AbstractLifeCycle implements Client {
         /* ------------------------------------------------------------ */
 
         protected void onException(Throwable ex) {
-            super.onException(ex);
             Message error = _msgPool.newMessage();
             error.put(Bayeux.SUCCESSFUL_FIELD, Boolean.FALSE);
             error.put("failure", getURI());
@@ -1285,6 +1298,7 @@ public class BayeuxClient extends AbstractLifeCycle implements Client {
 
                 @Override
                 public void onThrowable(Throwable t) {
+                    super.onThrowable(t);
                     if (ConnectException.class.isAssignableFrom(t.getClass())) {
                         onConnectionFailed(t);
                     } else if (TimeoutException.class.isAssignableFrom(t.getClass())) {
@@ -1306,7 +1320,6 @@ public class BayeuxClient extends AbstractLifeCycle implements Client {
         /* ------------------------------------------------------------ */
 
         protected void onExpire() {
-            super.onExpire();
             setInitialized(false);
             Message error = _msgPool.newMessage();
             error.put(Bayeux.SUCCESSFUL_FIELD, Boolean.FALSE);
@@ -1318,7 +1331,6 @@ public class BayeuxClient extends AbstractLifeCycle implements Client {
         /* ------------------------------------------------------------ */
 
         protected void onConnectionFailed(Throwable ex) {
-            super.onConnectionFailed(ex);
             setInitialized(false);
             Message error = _msgPool.newMessage();
             error.put(Bayeux.SUCCESSFUL_FIELD, Boolean.FALSE);
@@ -1331,7 +1343,6 @@ public class BayeuxClient extends AbstractLifeCycle implements Client {
         /* ------------------------------------------------------------ */
 
         protected void onException(Throwable ex) {
-            super.onException(ex);
             setInitialized(false);
             Message error = _msgPool.newMessage();
             error.put(Bayeux.SUCCESSFUL_FIELD, Boolean.FALSE);
@@ -1413,6 +1424,7 @@ public class BayeuxClient extends AbstractLifeCycle implements Client {
 
                 @Override
                 public void onThrowable(Throwable t) {
+                    super.onThrowable(t);                    
                     if (ConnectException.class.isAssignableFrom(t.getClass())) {
                         onConnectionFailed(t);
                     } else if (TimeoutException.class.isAssignableFrom(t.getClass())) {
