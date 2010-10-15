@@ -755,10 +755,8 @@ public class BayeuxClient extends AbstractLifeCycle implements Client {
 
 
     class BayeuxAsyncCompletionHandler implements AsyncHandler {
-        private final Collection<HttpResponseBodyPart> bodies =
-                Collections.synchronizedCollection(new ArrayList<HttpResponseBodyPart>());
-        private HttpResponseStatus status;
-        private HttpResponseHeaders headers;
+        protected HttpResponseStatus status;
+        protected HttpResponseHeaders headers;
 
         protected Utf8StringBuffer _responseContent;
         protected int _bufferSize = 1024;
@@ -777,7 +775,6 @@ public class BayeuxClient extends AbstractLifeCycle implements Client {
         }
 
         public AsyncHandler.STATE onBodyPartReceived(final HttpResponseBodyPart content) throws Exception {
-            bodies.add(content);
             if (_responseContent == null)
                 _responseContent = new Utf8StringBuffer(_bufferSize);
 
@@ -850,25 +847,20 @@ public class BayeuxClient extends AbstractLifeCycle implements Client {
 
 
         public Response onCompleted() throws Exception {
-
-            Response response = status.provider().prepareResponse(status, headers, bodies);
-            bodies.clear();
             if (status.getStatusCode() == 200) {
                 String content = getResponseContent();
                 if (content == null || content.length() == 0)
-                    throw new IllegalStateException("No content in response for " + response.getUri());
+                    throw new IllegalStateException("No content in response for " + status.getUrl());
                 _responses = _msgPool.parse(content);
 
                 if (_responses != null)
                     for (int i = 0; i < _responses.length; i++)
                         extendIn(_responses[i]);
             }
-
-            return response;
+            return null;
         }
 
         public void onThrowable(Throwable t) {
-            bodies.clear();
         }
 
         public AsyncHandler.STATE onHeaderWriteCompleted() {
@@ -1054,7 +1046,7 @@ public class BayeuxClient extends AbstractLifeCycle implements Client {
 
                 @Override
                 public final Response onCompleted() throws Exception {
-                    Response r = super.onCompleted();
+                    super.onCompleted();
                     if (_disconnecting) {
                         Message error = _msgPool.newMessage();
                         error.put(Bayeux.SUCCESSFUL_FIELD, Boolean.FALSE);
@@ -1065,10 +1057,10 @@ public class BayeuxClient extends AbstractLifeCycle implements Client {
                         } catch (Exception e) {
                             Log.ignore(e);
                         }
-                        return r;
+                        return null;
                     }
 
-                    if (r.getStatusCode() == 200 && _responses != null && _responses.length > 0) {
+                    if (status.getStatusCode() == 200 && _responses != null && _responses.length > 0) {
                         MessageImpl response = (MessageImpl) _responses[0];
                         boolean successful = response.isSuccessful();
 
@@ -1112,7 +1104,7 @@ public class BayeuxClient extends AbstractLifeCycle implements Client {
                     }
 
                     recycle();
-                    return r;
+                    return null;
                 }
 
                 @Override
@@ -1196,9 +1188,9 @@ public class BayeuxClient extends AbstractLifeCycle implements Client {
 
                 @Override                
                 public final Response onCompleted() throws Exception {
-                    Response r = super.onCompleted();
+                    super.onCompleted();
 
-                    if (r.getStatusCode() == 200 && _responses != null && _responses.length > 0) {
+                    if (status.getStatusCode() == 200 && _responses != null && _responses.length > 0) {
                         try {
                             startBatch();
 
@@ -1289,7 +1281,7 @@ public class BayeuxClient extends AbstractLifeCycle implements Client {
                     }
 
                     recycle();
-                    return r;
+                    return null;
                 }
 
                 @Override
@@ -1384,7 +1376,7 @@ public class BayeuxClient extends AbstractLifeCycle implements Client {
             asyncHandler = new BayeuxAsyncCompletionHandler() {
 
                 public final Response onCompleted() throws Exception {
-                    Response r = super.onCompleted();
+                    super.onCompleted();
 
                     try {
                         synchronized (_outQ) {
@@ -1392,7 +1384,7 @@ public class BayeuxClient extends AbstractLifeCycle implements Client {
                             _push = null;
                         }
 
-                        if (r.getStatusCode() == 200 && _responses != null && _responses.length > 0) {
+                        if (status.getStatusCode() == 200 && _responses != null && _responses.length > 0) {
                             for (int i = 0; i < _responses.length; i++) {
                                 MessageImpl msg = (MessageImpl) _responses[i];
 
@@ -1416,7 +1408,7 @@ public class BayeuxClient extends AbstractLifeCycle implements Client {
                         endBatch();
                     }
                     recycle();
-                    return r;
+                    return null;
                 }
 
                 @Override
