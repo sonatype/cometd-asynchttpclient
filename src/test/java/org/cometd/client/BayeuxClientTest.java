@@ -3,6 +3,7 @@ package org.cometd.client;
 import com.ning.http.client.AsyncHttpClient;
 import com.ning.http.client.AsyncHttpClientConfig;
 import com.ning.http.client.filter.ThrottleRequestAsyncFilter;
+import com.ning.http.client.providers.jdk.JDKAsyncHttpProvider;
 import junit.framework.TestCase;
 import org.cometd.Bayeux;
 import org.cometd.Client;
@@ -33,6 +34,7 @@ import java.util.HashMap;
 import java.util.Random;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Exchanger;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -79,7 +81,10 @@ public class BayeuxClientTest extends TestCase {
         AsyncHttpClientConfig.Builder config = new AsyncHttpClientConfig.Builder();
 
         config.setIdleConnectionTimeoutInMs(15000);
-        _httpClient = new AsyncHttpClient(config.build());
+        config.setExecutorService(Executors.newFixedThreadPool(200));
+        AsyncHttpClientConfig c = config.build();
+
+        _httpClient = new AsyncHttpClient(new JDKAsyncHttpProvider(c));
         _httpClient.addAsyncFilter(new ThrottleRequestAsyncFilter(20000));
 
         _port = _connector.getLocalPort();
@@ -92,9 +97,9 @@ public class BayeuxClientTest extends TestCase {
      */
     @Override
     protected void tearDown() throws Exception {
-        if (_httpClient != null)
-            _httpClient.close();
-        _httpClient = null;
+//        if (_httpClient != null)
+//            _httpClient.close();
+//        _httpClient = null;
 
         if (_server != null)
             _server.stop();
