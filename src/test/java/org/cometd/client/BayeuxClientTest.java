@@ -84,6 +84,20 @@ public class BayeuxClientTest extends TestCase {
         config.setExecutorService(Executors.newFixedThreadPool(200));
         AsyncHttpClientConfig c = config.build();
 
+        /*
+
+        // This work as well except it need more memory/file descriptor as Netty.
+        
+        config.setIdleConnectionTimeoutInMs(15000);
+        config.setMaximumConnectionsPerHost(1000);
+        config.setRequestTimeoutInMs(5 * 60 * 1000);
+        AsyncHttpClientConfig c = config.build();
+
+        _httpClient = new AsyncHttpClient(new NettyAsyncHttpProvider(c));
+
+         */
+
+
         _httpClient = new AsyncHttpClient(new JDKAsyncHttpProvider(c));
         _httpClient.addAsyncFilter(new ThrottleRequestAsyncFilter(20000));
 
