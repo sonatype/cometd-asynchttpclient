@@ -23,7 +23,6 @@ import com.ning.http.client.HttpResponseStatus;
 import com.ning.http.client.RequestBuilder;
 import com.ning.http.client.Response;
 import com.ning.http.client.logging.LogManager;
-import com.ning.http.client.logging.Logger;
 import com.ning.http.client.logging.LoggerProvider;
 import org.cometd.Bayeux;
 import org.cometd.Client;
@@ -41,7 +40,6 @@ import org.eclipse.jetty.http.HttpHeaders;
 import org.eclipse.jetty.http.HttpSchemes;
 import org.eclipse.jetty.http.HttpURI;
 import org.eclipse.jetty.io.Buffer;
-import org.eclipse.jetty.io.ByteArrayBuffer;
 import org.eclipse.jetty.util.ArrayQueue;
 import org.eclipse.jetty.util.LazyList;
 import org.eclipse.jetty.util.QuotedStringTokenizer;
@@ -52,7 +50,6 @@ import org.eclipse.jetty.util.log.Log;
 
 import javax.servlet.http.Cookie;
 import java.io.IOException;
-import java.io.UnsupportedEncodingException;
 import java.rmi.ConnectException;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
@@ -116,7 +113,6 @@ public class BayeuxClient extends AbstractLifeCycle implements Client {
 
     static {
 // Brige AsyncHttpClient logger
-        Log.getLog().setDebugEnabled(true);
         LogManager.setProvider( new LoggerProvider()
         {
 
