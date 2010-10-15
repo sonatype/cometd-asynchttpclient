@@ -1295,6 +1295,7 @@ public class BayeuxClient extends AbstractLifeCycle implements Client {
                 @Override
                 public void onThrowable(Throwable t) {
                     super.onThrowable(t);
+                    if (t == null) return;
                     if (ConnectException.class.isAssignableFrom(t.getClass())) {
                         onConnectionFailed(t);
                     } else if (TimeoutException.class.isAssignableFrom(t.getClass())) {
@@ -1420,7 +1421,8 @@ public class BayeuxClient extends AbstractLifeCycle implements Client {
 
                 @Override
                 public void onThrowable(Throwable t) {
-                    super.onThrowable(t);                    
+                    super.onThrowable(t);
+                    if (t == null) return;
                     if (ConnectException.class.isAssignableFrom(t.getClass())) {
                         onConnectionFailed(t);
                     } else if (TimeoutException.class.isAssignableFrom(t.getClass())) {
