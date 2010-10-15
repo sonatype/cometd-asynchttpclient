@@ -51,6 +51,7 @@ import org.eclipse.jetty.util.log.Log;
 import javax.servlet.http.Cookie;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
+import java.rmi.ConnectException;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -67,6 +68,7 @@ import java.util.TimerTask;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 /* ------------------------------------------------------------ */
 
@@ -1104,11 +1106,15 @@ public class BayeuxClient extends AbstractLifeCycle implements Client {
 
                 @Override
                 public void onThrowable(Throwable t) {
-                    onConnectionFailed(t);
+                    if (ConnectException.class.isAssignableFrom(t.getClass())) {
+                        onConnectionFailed(t);
+                    } else if (TimeoutException.class.isAssignableFrom(t.getClass())) {
+                        onExpire();
+                    } else {
+                        onException(t);
+                    }
                 }
             };
-
-
         }
 
         /* ------------------------------------------------------------ */
@@ -1279,7 +1285,13 @@ public class BayeuxClient extends AbstractLifeCycle implements Client {
 
                 @Override
                 public void onThrowable(Throwable t) {
-                    onConnectionFailed(t);
+                    if (ConnectException.class.isAssignableFrom(t.getClass())) {
+                        onConnectionFailed(t);
+                    } else if (TimeoutException.class.isAssignableFrom(t.getClass())) {
+                        onExpire();
+                    } else {
+                        onException(t);
+                    }
                 }
 
             };
@@ -1401,7 +1413,13 @@ public class BayeuxClient extends AbstractLifeCycle implements Client {
 
                 @Override
                 public void onThrowable(Throwable t) {
-                    onConnectionFailed(t);
+                    if (ConnectException.class.isAssignableFrom(t.getClass())) {
+                        onConnectionFailed(t);
+                    } else if (TimeoutException.class.isAssignableFrom(t.getClass())) {
+                        onExpire();
+                    } else {
+                        onException(t);
+                    }
                 }
             };
         }
