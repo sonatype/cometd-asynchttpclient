@@ -3,7 +3,6 @@ package org.cometd.client;
 import com.ning.http.client.AsyncHttpClient;
 import com.ning.http.client.AsyncHttpClientConfig;
 import com.ning.http.client.filter.ThrottleRequestAsyncFilter;
-import com.ning.http.client.providers.jdk.JDKAsyncHttpProvider;
 import junit.framework.TestCase;
 import org.cometd.Bayeux;
 import org.cometd.Client;
@@ -84,21 +83,7 @@ public class BayeuxClientTest extends TestCase {
         config.setExecutorService(Executors.newFixedThreadPool(200));
         AsyncHttpClientConfig c = config.build();
 
-        /*
-
-        // This work as well except it need more memory/file descriptor as Netty.
-        
-        config.setIdleConnectionTimeoutInMs(15000);
-        config.setMaximumConnectionsPerHost(1000);
-        config.setRequestTimeoutInMs(5 * 60 * 1000);
-        AsyncHttpClientConfig c = config.build();
-
-        _httpClient = new AsyncHttpClient(new NettyAsyncHttpProvider(c));
-
-         */
-
-
-        _httpClient = new AsyncHttpClient(new JDKAsyncHttpProvider(c));
+        _httpClient = new AsyncHttpClient();
         _httpClient.addAsyncFilter(new ThrottleRequestAsyncFilter(20000));
 
         _port = _connector.getLocalPort();
@@ -111,10 +96,6 @@ public class BayeuxClientTest extends TestCase {
      */
     @Override
     protected void tearDown() throws Exception {
-//        if (_httpClient != null)
-//            _httpClient.close();
-//        _httpClient = null;
-
         if (_server != null)
             _server.stop();
         _server = null;
