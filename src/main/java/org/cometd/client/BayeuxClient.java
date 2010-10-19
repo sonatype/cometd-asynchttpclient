@@ -34,7 +34,6 @@ import org.cometd.server.MessageImpl;
 import org.cometd.server.MessagePool;
 import org.eclipse.jetty.client.Address;
 import org.eclipse.jetty.client.CachedExchange;
-import org.eclipse.jetty.client.HttpExchange;
 import org.eclipse.jetty.http.HttpFields;
 import org.eclipse.jetty.http.HttpHeaders;
 import org.eclipse.jetty.http.HttpSchemes;
@@ -53,10 +52,7 @@ import java.io.IOException;
 import java.rmi.ConnectException;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
-import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collection;
-import java.util.Collections;
 import java.util.Date;
 import java.util.LinkedList;
 import java.util.List;
@@ -113,82 +109,66 @@ public class BayeuxClient extends AbstractLifeCycle implements Client {
 
     static {
 // Brige AsyncHttpClient logger
-        LogManager.setProvider( new LoggerProvider()
-        {
+        LogManager.setProvider(new LoggerProvider() {
 
-            public com.ning.http.client.logging.Logger getLogger( final Class<?> clazz )
-            {
-                return new com.ning.http.client.logging.Logger()
-                {
+            public com.ning.http.client.logging.Logger getLogger(final Class<?> clazz) {
+                return new com.ning.http.client.logging.Logger() {
 
-                    public boolean isDebugEnabled()
-                    {
+                    public boolean isDebugEnabled() {
                         return Log.isDebugEnabled();
                     }
 
-                    public void debug( final String msg, final Object... msgArgs )
-                    {
-                        Log.debug( String.format( msg, msgArgs ) );
+                    public void debug(final String msg, final Object... msgArgs) {
+                        Log.debug(String.format(msg, msgArgs));
                     }
 
-                    public void debug( final Throwable t )
-                    {
-                        Log.debug( "", t );
+                    public void debug(final Throwable t) {
+                        Log.debug("", t);
                     }
 
-                    public void debug( final Throwable t, final String msg, final Object... msgArgs )
-                    {
-                        Log.debug( String.format( msg, msgArgs ), t );
+                    public void debug(final Throwable t, final String msg, final Object... msgArgs) {
+                        Log.debug(String.format(msg, msgArgs), t);
                     }
 
-                    public void info( final String msg, final Object... msgArgs )
-                    {
-                        Log.debug( String.format( msg, msgArgs ) );
+                    public void info(final String msg, final Object... msgArgs) {
+                        Log.debug(String.format(msg, msgArgs));
                     }
 
-                    public void info( final Throwable t )
-                    {
-                        Log.debug( "", t );
+                    public void info(final Throwable t) {
+                        Log.debug("", t);
                     }
 
-                    public void info( final Throwable t, final String msg, final Object... msgArgs )
-                    {
-                        Log.debug( String.format( msg, msgArgs ), t );
+                    public void info(final Throwable t, final String msg, final Object... msgArgs) {
+                        Log.debug(String.format(msg, msgArgs), t);
                     }
 
-                    public void warn( final String msg, final Object... msgArgs )
-                    {
-                        Log.debug( String.format( msg, msgArgs ) );
+                    public void warn(final String msg, final Object... msgArgs) {
+                        Log.debug(String.format(msg, msgArgs));
                     }
 
-                    public void warn( final Throwable t )
-                    {
-                        Log.debug( "", t );
+                    public void warn(final Throwable t) {
+                        Log.debug("", t);
                     }
 
-                    public void warn( final Throwable t, final String msg, final Object... msgArgs )
-                    {
-                        Log.debug( String.format( msg, msgArgs ), t );
+                    public void warn(final Throwable t, final String msg, final Object... msgArgs) {
+                        Log.debug(String.format(msg, msgArgs), t);
                     }
 
-                    public void error( final String msg, final Object... msgArgs )
-                    {
-                        Log.debug( String.format( msg, msgArgs ) );
+                    public void error(final String msg, final Object... msgArgs) {
+                        Log.debug(String.format(msg, msgArgs));
 
                     }
 
-                    public void error( final Throwable t )
-                    {
-                        Log.debug( "", t );
+                    public void error(final Throwable t) {
+                        Log.debug("", t);
                     }
 
-                    public void error( final Throwable t, final String msg, final Object... msgArgs )
-                    {
-                        Log.debug( String.format( msg, msgArgs ), t );
+                    public void error(final Throwable t, final String msg, final Object... msgArgs) {
+                        Log.debug(String.format(msg, msgArgs), t);
                     }
                 };
             }
-        } );
+        });
     }
 
 
@@ -704,7 +684,7 @@ public class BayeuxClient extends AbstractLifeCycle implements Client {
      *
      * @param exchange The exchange to customize
      */
-    protected void customize(HttpExchange exchange) {
+    protected void customize(Exchange exchange) {
         StringBuilder builder = null;
         for (String cookieName : _cookies.keySet()) {
             if (builder == null)
@@ -722,7 +702,7 @@ public class BayeuxClient extends AbstractLifeCycle implements Client {
         }
 
         if (builder != null)
-            exchange.setRequestHeader(HttpHeaders.COOKIE, builder.toString());
+            exchange.getRequestBuilder().setHeader(HttpHeaders.COOKIE, builder.toString());
 
         if (_scheme != null)
             exchange.setScheme(_scheme);
@@ -881,15 +861,13 @@ public class BayeuxClient extends AbstractLifeCycle implements Client {
             this._responses = _responses;
         }
 
-        public synchronized int getResponseStatus()
-        {
+        public synchronized int getResponseStatus() {
             if (status == null)
                 throw new IllegalStateException("Response not received yet");
             return status.getStatusCode();
         }
 
-        public synchronized HttpFields getResponseFields()
-        {
+        public synchronized HttpFields getResponseFields() {
             if (status == null)
                 throw new IllegalStateException("Headers not completely received yet");
 
@@ -898,7 +876,7 @@ public class BayeuxClient extends AbstractLifeCycle implements Client {
             FluentCaseInsensitiveStringsMap h = headers.getHeaders();
             for (String headerName : h.keySet()) {
                 f.put(headerName, h.getFirstValue(headerName));
-            }        
+            }
             return f;
         }
     }
@@ -914,8 +892,9 @@ public class BayeuxClient extends AbstractLifeCycle implements Client {
     protected class Exchange extends CachedExchange {
         int _backoff = _backoffInterval;
         String _json;
+        private Buffer _scheme = HttpSchemes.HTTP_BUFFER;
 
-        protected final RequestBuilder requestBuilder;
+        protected RequestBuilder requestBuilder;
         protected BayeuxAsyncCompletionHandler asyncHandler;
 
         /* ------------------------------------------------------------ */
@@ -928,7 +907,7 @@ public class BayeuxClient extends AbstractLifeCycle implements Client {
             setURI(_path + "/" + info);
             setRequestContentType(Bayeux.JSON_CONTENT_TYPE);
 
-            requestBuilder = new RequestBuilder("POST").setUrl(getScheme() + "://" + getAddress() + getURI())
+            requestBuilder = new RequestBuilder("POST").setUrl(_scheme + "://" + getAddress() + getURI())
                     .setHeader("Content-Type", Bayeux.JSON_CONTENT_TYPE);
             asyncHandler = new BayeuxAsyncCompletionHandler();
         }
@@ -1026,6 +1005,26 @@ public class BayeuxClient extends AbstractLifeCycle implements Client {
 
         public BayeuxAsyncCompletionHandler getAsyncHandler() {
             return asyncHandler;
+        }
+
+        /**
+         * @param scheme the scheme of the URL (for example 'http')
+         */
+        public void setScheme(Buffer scheme) {
+            _scheme = scheme;
+            if (requestBuilder == null) {
+                requestBuilder = new RequestBuilder("POST").setUrl(_scheme + "://" + getAddress() + getURI())
+                    .setHeader("Content-Type", Bayeux.JSON_CONTENT_TYPE);
+            } else {
+                requestBuilder.setUrl(_scheme + "://" + getAddress() + getURI());
+            }
+        }
+
+        /**
+         * @return the scheme of the URL
+         */
+        public Buffer getScheme() {
+            return _scheme;
         }
 
     }
@@ -1186,7 +1185,7 @@ public class BayeuxClient extends AbstractLifeCycle implements Client {
 
             asyncHandler = new BayeuxAsyncCompletionHandler() {
 
-                @Override                
+                @Override
                 public final Response onCompleted() throws Exception {
                     super.onCompleted();
 
