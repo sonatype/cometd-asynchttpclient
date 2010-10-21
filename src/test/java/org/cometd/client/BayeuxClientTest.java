@@ -2,7 +2,9 @@ package org.cometd.client;
 
 import com.ning.http.client.AsyncHttpClient;
 import com.ning.http.client.AsyncHttpClientConfig;
+import com.ning.http.client.AsyncHttpProviderConfig;
 import com.ning.http.client.filter.ThrottleRequestAsyncFilter;
+import com.ning.http.client.providers.netty.NettyAsyncHttpProviderConfig;
 import junit.framework.TestCase;
 import org.cometd.Bayeux;
 import org.cometd.Client;
@@ -77,10 +79,12 @@ public class BayeuxClientTest extends TestCase {
         context.addServlet(DefaultServlet.class, "/");
 
         _server.start();
+        AsyncHttpProviderConfig pc = new NettyAsyncHttpProviderConfig();
+        pc.addProperty(NettyAsyncHttpProviderConfig.USE_BLOCKING_IO, "true");
+
         AsyncHttpClientConfig.Builder config = new AsyncHttpClientConfig.Builder();
 
-        config.setIdleConnectionTimeoutInMs(15000);
-        config.setExecutorService(Executors.newFixedThreadPool(200));
+        config.setIdleConnectionTimeoutInMs(15000).setAsyncHttpClientProviderConfig(pc).setExecutorService(Executors.newFixedThreadPool(200));
         AsyncHttpClientConfig c = config.build();
 
         _httpClient = new AsyncHttpClient();
