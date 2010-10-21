@@ -3,6 +3,7 @@ package org.cometd.client;
 import com.ning.http.client.AsyncHttpClient;
 import com.ning.http.client.AsyncHttpClientConfig;
 import com.ning.http.client.filter.ThrottleRequestAsyncFilter;
+import com.ning.http.client.providers.jdk.JDKAsyncHttpProvider;
 import junit.framework.TestCase;
 import org.cometd.Bayeux;
 import org.cometd.Client;
@@ -80,9 +81,8 @@ public class BayeuxClientTest extends TestCase {
         AsyncHttpClientConfig.Builder config = new AsyncHttpClientConfig.Builder();
 
         config.setIdleConnectionTimeoutInMs(15000);
-        AsyncHttpClientConfig c = config.build();
 
-        _httpClient = new AsyncHttpClient();
+        _httpClient = new AsyncHttpClient(new JDKAsyncHttpProvider(config.build()));
         _port = _connector.getLocalPort();
     }
 
