@@ -2,7 +2,6 @@ package org.cometd.client;
 
 import com.ning.http.client.AsyncHttpClient;
 import com.ning.http.client.AsyncHttpClientConfig;
-import com.ning.http.client.filter.ThrottleRequestAsyncFilter;
 import com.ning.http.client.providers.jdk.JDKAsyncHttpProvider;
 import junit.framework.TestCase;
 import org.cometd.Bayeux;
@@ -34,7 +33,6 @@ import java.util.HashMap;
 import java.util.Random;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Exchanger;
-import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -79,7 +77,6 @@ public class BayeuxClientTest extends TestCase {
 
         _server.start();
         AsyncHttpClientConfig.Builder config = new AsyncHttpClientConfig.Builder();
-
         config.setIdleConnectionTimeoutInMs(15000);
 
         _httpClient = new AsyncHttpClient(new JDKAsyncHttpProvider(config.build()));

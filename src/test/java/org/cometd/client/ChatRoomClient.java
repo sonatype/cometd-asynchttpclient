@@ -16,7 +16,7 @@ package org.cometd.client;
 
 import com.ning.http.client.AsyncHttpClient;
 import com.ning.http.client.AsyncHttpClientConfig;
-import com.ning.http.client.filter.ThrottleRequestAsyncFilter;
+import com.ning.http.client.extra.ThrottleRequestFilter;
 import org.cometd.Client;
 import org.cometd.Extension;
 import org.cometd.Message;
@@ -136,8 +136,8 @@ public class ChatRoomClient extends AbstractLifeCycle {
 
         if (_httpClient == null) {
             AsyncHttpClientConfig.Builder config = new AsyncHttpClientConfig.Builder();
+            config.addRequestFilter(new ThrottleRequestFilter(5));
             _httpClient = new AsyncHttpClient(config.build());
-            _httpClient.addAsyncFilter(new ThrottleRequestAsyncFilter(5));
         }
 
 

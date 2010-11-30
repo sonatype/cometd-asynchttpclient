@@ -2,7 +2,7 @@ package org.cometd.client;
 
 import com.ning.http.client.AsyncHttpClient;
 import com.ning.http.client.AsyncHttpClientConfig;
-import com.ning.http.client.filter.ThrottleRequestAsyncFilter;
+import com.ning.http.client.extra.ThrottleRequestFilter;
 import org.cometd.Client;
 import org.cometd.Message;
 import org.cometd.MessageListener;
@@ -39,10 +39,8 @@ public class SimpleEchoBayeuxClient {
         _timer = new Timer("SharedBayeuxClientTimer", true);
 
         AsyncHttpClientConfig.Builder config = new AsyncHttpClientConfig.Builder();
-
+        config.addRequestFilter(new ThrottleRequestFilter(40000));
         _httpClient = new AsyncHttpClient(config.build());
-        _httpClient.addAsyncFilter(new ThrottleRequestAsyncFilter(40000));
-
 
         Address address = new Address(host, port);
 

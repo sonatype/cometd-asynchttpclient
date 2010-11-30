@@ -22,8 +22,6 @@ import com.ning.http.client.HttpResponseHeaders;
 import com.ning.http.client.HttpResponseStatus;
 import com.ning.http.client.RequestBuilder;
 import com.ning.http.client.Response;
-import com.ning.http.client.logging.LogManager;
-import com.ning.http.client.logging.LoggerProvider;
 import org.cometd.Bayeux;
 import org.cometd.Client;
 import org.cometd.ClientListener;
@@ -106,71 +104,6 @@ public class BayeuxClient extends AbstractLifeCycle implements Client {
     private int _backoffMaxInterval = 60000;
     private Extension[] _extensions;
     private JSON _jsonOut;
-
-    static {
-// Brige AsyncHttpClient logger
-        LogManager.setProvider(new LoggerProvider() {
-
-            public com.ning.http.client.logging.Logger getLogger(final Class<?> clazz) {
-                return new com.ning.http.client.logging.Logger() {
-
-                    public boolean isDebugEnabled() {
-                        return Log.isDebugEnabled();
-                    }
-
-                    public void debug(final String msg, final Object... msgArgs) {
-                        Log.debug(String.format(msg, msgArgs));
-                    }
-
-                    public void debug(final Throwable t) {
-                        Log.debug("", t);
-                    }
-
-                    public void debug(final Throwable t, final String msg, final Object... msgArgs) {
-                        Log.debug(String.format(msg, msgArgs), t);
-                    }
-
-                    public void info(final String msg, final Object... msgArgs) {
-                        Log.debug(String.format(msg, msgArgs));
-                    }
-
-                    public void info(final Throwable t) {
-                        Log.debug("", t);
-                    }
-
-                    public void info(final Throwable t, final String msg, final Object... msgArgs) {
-                        Log.debug(String.format(msg, msgArgs), t);
-                    }
-
-                    public void warn(final String msg, final Object... msgArgs) {
-                        Log.debug(String.format(msg, msgArgs));
-                    }
-
-                    public void warn(final Throwable t) {
-                        Log.debug("", t);
-                    }
-
-                    public void warn(final Throwable t, final String msg, final Object... msgArgs) {
-                        Log.debug(String.format(msg, msgArgs), t);
-                    }
-
-                    public void error(final String msg, final Object... msgArgs) {
-                        Log.debug(String.format(msg, msgArgs));
-
-                    }
-
-                    public void error(final Throwable t) {
-                        Log.debug("", t);
-                    }
-
-                    public void error(final Throwable t, final String msg, final Object... msgArgs) {
-                        Log.debug(String.format(msg, msgArgs), t);
-                    }
-                };
-            }
-        });
-    }
-
 
     /* ------------------------------------------------------------ */
 
