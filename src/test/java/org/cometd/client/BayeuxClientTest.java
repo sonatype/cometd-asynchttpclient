@@ -454,6 +454,7 @@ public class BayeuxClientTest extends TestCase {
 
     /* ------------------------------------------------------------ */
 
+/*
     public void testPerf() throws Exception {
         Runtime.getRuntime().addShutdownHook(new DumpThread());
 
@@ -546,6 +547,7 @@ public class BayeuxClientTest extends TestCase {
         for (BayeuxClient client : clients)
             client.stop();
     }
+*/
 
     private class DumpThread extends Thread {
         public void run() {
